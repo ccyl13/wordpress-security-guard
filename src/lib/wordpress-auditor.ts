@@ -1,5 +1,5 @@
 import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo } from '@/types/wordpress-audit';
-import { fetchWithProxy, checkEndpointExists } from './cors-proxy';
+import { fetchWithProxy, checkEndpointsBatch } from './cors-proxy';
 
 const SECURITY_HEADERS_TO_CHECK = [
   { name: 'Content-Security-Policy', critical: true },
@@ -9,25 +9,21 @@ const SECURITY_HEADERS_TO_CHECK = [
   { name: 'X-XSS-Protection', critical: false },
   { name: 'Referrer-Policy', critical: false },
   { name: 'Permissions-Policy', critical: false },
-  { name: 'X-Permitted-Cross-Domain-Policies', critical: false },
   { name: 'Cross-Origin-Embedder-Policy', critical: false },
   { name: 'Cross-Origin-Opener-Policy', critical: false },
-  { name: 'Cross-Origin-Resource-Policy', critical: false },
 ];
 
 const WP_ENDPOINTS = [
-  { path: '/xmlrpc.php', name: 'XML-RPC', risk: 'critical' as const, description: 'XML-RPC puede usarse para ataques de fuerza bruta y DDoS amplificado' },
-  { path: '/wp-login.php', name: 'WP Login', risk: 'medium' as const, description: 'Página de login expuesta públicamente' },
+  { path: '/xmlrpc.php', name: 'XML-RPC', risk: 'critical' as const, description: 'Puede usarse para ataques de fuerza bruta y DDoS' },
+  { path: '/wp-login.php', name: 'WP Login', risk: 'medium' as const, description: 'Página de login expuesta' },
   { path: '/wp-admin/', name: 'WP Admin', risk: 'medium' as const, description: 'Panel de administración accesible' },
-  { path: '/wp-json/', name: 'REST API', risk: 'info' as const, description: 'API REST de WordPress activa' },
-  { path: '/wp-content/debug.log', name: 'Debug Log', risk: 'critical' as const, description: 'Archivo de debug expuesto con información sensible' },
-  { path: '/wp-config.php.bak', name: 'Config Backup', risk: 'critical' as const, description: 'Backup de configuración con credenciales' },
-  { path: '/wp-config.php~', name: 'Config Temp', risk: 'critical' as const, description: 'Archivo temporal de configuración' },
+  { path: '/wp-json/', name: 'REST API', risk: 'info' as const, description: 'API REST activa' },
+  { path: '/wp-content/debug.log', name: 'Debug Log', risk: 'critical' as const, description: 'Archivo de debug con info sensible' },
+  { path: '/wp-config.php.bak', name: 'Config Backup', risk: 'critical' as const, description: 'Backup con credenciales' },
   { path: '/.git/', name: 'Git Exposed', risk: 'critical' as const, description: 'Repositorio Git expuesto' },
-  { path: '/readme.html', name: 'Readme', risk: 'low' as const, description: 'Archivo readme revela versión de WordPress' },
-  { path: '/license.txt', name: 'License', risk: 'low' as const, description: 'Archivo de licencia de WordPress' },
-  { path: '/wp-includes/', name: 'WP Includes', risk: 'info' as const, description: 'Directorio de includes accesible' },
-  { path: '/wp-content/uploads/', name: 'Uploads Dir', risk: 'low' as const, description: 'Directorio de uploads listable' },
+  { path: '/readme.html', name: 'Readme', risk: 'low' as const, description: 'Revela versión de WordPress' },
+  { path: '/wp-includes/', name: 'WP Includes', risk: 'info' as const, description: 'Directorio includes accesible' },
+  { path: '/wp-content/uploads/', name: 'Uploads', risk: 'low' as const, description: 'Directorio uploads listable' },
 ];
 
 function normalizeUrl(url: string): string {
@@ -50,10 +46,7 @@ function getHeaderStatus(name: string, value: string | null): 'secure' | 'warnin
       }
       return 'secure';
     case 'x-frame-options':
-      if (lowerValue === 'deny' || lowerValue === 'sameorigin') {
-        return 'secure';
-      }
-      return 'warning';
+      return (lowerValue === 'deny' || lowerValue === 'sameorigin') ? 'secure' : 'warning';
     case 'strict-transport-security':
       const maxAge = parseInt(lowerValue.match(/max-age=(\d+)/)?.[1] || '0');
       if (maxAge >= 31536000) return 'secure';
@@ -62,33 +55,26 @@ function getHeaderStatus(name: string, value: string | null): 'secure' | 'warnin
     case 'x-content-type-options':
       return lowerValue === 'nosniff' ? 'secure' : 'warning';
     default:
-      return value ? 'secure' : 'vulnerable';
+      return 'secure';
   }
 }
 
 function getHeaderDescription(name: string, value: string | null): string {
   if (!value) {
-    return `Cabecera ${name} no configurada. Esto puede exponer el sitio a ataques.`;
+    return `${name} no configurada - expone el sitio a ataques`;
   }
   
-  switch (name.toLowerCase()) {
-    case 'content-security-policy':
-      return 'Define qué recursos pueden cargarse en la página.';
-    case 'x-frame-options':
-      return 'Protege contra ataques de clickjacking.';
-    case 'strict-transport-security':
-      return 'Fuerza conexiones HTTPS.';
-    case 'x-content-type-options':
-      return 'Previene MIME-sniffing.';
-    case 'x-xss-protection':
-      return 'Filtro XSS del navegador (legacy).';
-    case 'referrer-policy':
-      return 'Controla información de referrer enviada.';
-    case 'permissions-policy':
-      return 'Controla qué APIs del navegador pueden usarse.';
-    default:
-      return `Cabecera de seguridad: ${value}`;
-  }
+  const descriptions: Record<string, string> = {
+    'content-security-policy': 'Define recursos permitidos en la página',
+    'x-frame-options': 'Protege contra clickjacking',
+    'strict-transport-security': 'Fuerza conexiones HTTPS',
+    'x-content-type-options': 'Previene MIME-sniffing',
+    'x-xss-protection': 'Filtro XSS del navegador',
+    'referrer-policy': 'Controla información de referrer',
+    'permissions-policy': 'Controla APIs del navegador',
+  };
+  
+  return descriptions[name.toLowerCase()] || `Configurado: ${value.substring(0, 50)}...`;
 }
 
 async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> {
@@ -107,25 +93,24 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
       });
     }
     
-    // Check for server header (information disclosure)
+    // Check for information disclosure headers
     const serverHeader = response.headers.get('Server');
     if (serverHeader) {
       headers.push({
         name: 'Server',
         value: serverHeader,
-        status: serverHeader.toLowerCase().includes('apache') || serverHeader.toLowerCase().includes('nginx') ? 'warning' : 'info',
-        description: 'Revela información del servidor web.',
+        status: 'warning',
+        description: 'Revela información del servidor',
       });
     }
     
-    // Check for X-Powered-By
     const poweredBy = response.headers.get('X-Powered-By');
     if (poweredBy) {
       headers.push({
         name: 'X-Powered-By',
         value: poweredBy,
         status: 'warning',
-        description: 'Revela tecnología del backend (debería eliminarse).',
+        description: 'Revela tecnología del backend',
       });
     }
   } catch (error) {
@@ -136,44 +121,36 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
 }
 
 async function checkEndpoints(baseUrl: string): Promise<EndpointCheck[]> {
-  const results: EndpointCheck[] = [];
+  const urls = WP_ENDPOINTS.map(ep => baseUrl + ep.path);
+  const results = await checkEndpointsBatch(urls, 4);
   
-  const checks = await Promise.all(
-    WP_ENDPOINTS.map(async (endpoint) => {
-      const fullUrl = baseUrl + endpoint.path;
-      const result = await checkEndpointExists(fullUrl);
-      
-      return {
-        name: endpoint.name,
-        url: fullUrl,
-        status: result.exists ? 'accessible' : 'blocked',
-        statusCode: result.statusCode,
-        description: endpoint.description,
-        risk: endpoint.risk,
-      } as EndpointCheck;
-    })
-  );
-  
-  return checks;
+  return WP_ENDPOINTS.map((endpoint) => {
+    const fullUrl = baseUrl + endpoint.path;
+    const result = results.get(fullUrl) || { exists: false, statusCode: 0 };
+    
+    return {
+      name: endpoint.name,
+      url: fullUrl,
+      status: result.exists ? 'accessible' : 'blocked',
+      statusCode: result.statusCode,
+      description: endpoint.description,
+      risk: endpoint.risk,
+    };
+  });
 }
 
 async function checkUserEnumeration(baseUrl: string): Promise<UserEnumeration> {
-  const result: UserEnumeration = {
-    found: false,
-    users: [],
-    method: '',
-  };
+  const result: UserEnumeration = { found: false, users: [], method: '' };
   
-  // Method 1: REST API
+  // Method 1: REST API (most common)
   try {
-    const restApiUrl = baseUrl + '/wp-json/wp/v2/users';
-    const response = await fetchWithProxy(restApiUrl);
+    const response = await fetchWithProxy(baseUrl + '/wp-json/wp/v2/users');
     if (response.ok) {
       const users = await response.json();
       if (Array.isArray(users) && users.length > 0) {
         result.found = true;
         result.method = 'REST API (/wp-json/wp/v2/users)';
-        result.users = users.map((u: any) => ({
+        result.users = users.slice(0, 10).map((u: any) => ({
           id: u.id,
           name: u.name,
           slug: u.slug,
@@ -181,20 +158,17 @@ async function checkUserEnumeration(baseUrl: string): Promise<UserEnumeration> {
         return result;
       }
     }
-  } catch {
-    // Continue to next method
-  }
+  } catch { /* continue */ }
   
   // Method 2: rest_route parameter
   try {
-    const restRouteUrl = baseUrl + '/?rest_route=/wp/v2/users';
-    const response = await fetchWithProxy(restRouteUrl);
+    const response = await fetchWithProxy(baseUrl + '/?rest_route=/wp/v2/users');
     if (response.ok) {
       const users = await response.json();
       if (Array.isArray(users) && users.length > 0) {
         result.found = true;
         result.method = 'REST Route (/?rest_route=/wp/v2/users)';
-        result.users = users.map((u: any) => ({
+        result.users = users.slice(0, 10).map((u: any) => ({
           id: u.id,
           name: u.name,
           slug: u.slug,
@@ -202,37 +176,36 @@ async function checkUserEnumeration(baseUrl: string): Promise<UserEnumeration> {
         return result;
       }
     }
-  } catch {
-    // Continue to next method
-  }
+  } catch { /* continue */ }
   
-  // Method 3: Author enumeration via ?author=N
+  // Method 3: Author enumeration (check first 3 authors in parallel)
   try {
-    for (let i = 1; i <= 5; i++) {
-      const authorUrl = baseUrl + `/?author=${i}`;
-      const response = await fetchWithProxy(authorUrl);
-      const html = await response.text();
-      
-      // Check for author redirect or author page
-      const authorMatch = html.match(/author\/([^\/\"]+)/);
-      if (authorMatch) {
-        result.found = true;
-        result.method = 'Author Parameter (?author=N)';
-        result.users.push({
-          id: i,
-          name: authorMatch[1],
-          slug: authorMatch[1],
-        });
-      }
+    const authorChecks = await Promise.all(
+      [1, 2, 3].map(async (i) => {
+        try {
+          const response = await fetchWithProxy(baseUrl + `/?author=${i}`);
+          const html = await response.text();
+          const authorMatch = html.match(/author\/([^\/\"]+)/);
+          if (authorMatch) {
+            return { id: i, name: authorMatch[1], slug: authorMatch[1] };
+          }
+        } catch { /* ignore */ }
+        return null;
+      })
+    );
+    
+    const foundUsers = authorChecks.filter(Boolean);
+    if (foundUsers.length > 0) {
+      result.found = true;
+      result.method = 'Author Parameter (?author=N)';
+      result.users = foundUsers as any[];
     }
-  } catch {
-    // Enumeration failed
-  }
+  } catch { /* ignore */ }
   
   return result;
 }
 
-async function getWordPressInfo(baseUrl: string): Promise<WordPressInfo> {
+async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPressInfo> {
   const info: WordPressInfo = {
     version: null,
     theme: null,
@@ -240,35 +213,22 @@ async function getWordPressInfo(baseUrl: string): Promise<WordPressInfo> {
     readme: false,
   };
   
-  try {
-    const response = await fetchWithProxy(baseUrl);
-    const html = await response.text();
-    
-    // Check for generator meta tag
-    const generatorMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']WordPress\s*([\d.]+)?["']/i);
-    if (generatorMatch) {
-      info.generator = true;
-      info.version = generatorMatch[1] || 'Unknown';
-    }
-    
-    // Check for version in scripts/styles
-    const versionMatch = html.match(/ver=([\d.]+)/);
-    if (versionMatch && !info.version) {
-      info.version = versionMatch[1];
-    }
-    
-    // Check for theme
-    const themeMatch = html.match(/wp-content\/themes\/([^\/\"]+)/);
-    if (themeMatch) {
-      info.theme = themeMatch[1];
-    }
-  } catch {
-    // Failed to get info
+  // Check for generator meta tag
+  const generatorMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']WordPress\s*([\d.]+)?["']/i);
+  if (generatorMatch) {
+    info.generator = true;
+    info.version = generatorMatch[1] || 'Unknown';
   }
   
-  // Check readme
-  const readmeCheck = await checkEndpointExists(baseUrl + '/readme.html');
-  info.readme = readmeCheck.exists;
+  // Check for version in scripts/styles
+  if (!info.version) {
+    const versionMatch = html.match(/ver=([\d.]+)/);
+    if (versionMatch) info.version = versionMatch[1];
+  }
+  
+  // Check for theme
+  const themeMatch = html.match(/wp-content\/themes\/([^\/\"]+)/);
+  if (themeMatch) info.theme = themeMatch[1];
   
   return info;
 }
@@ -276,8 +236,8 @@ async function getWordPressInfo(baseUrl: string): Promise<WordPressInfo> {
 function calculateOverallScore(result: Partial<AuditResult>): number {
   let score = 100;
   
-  // Deduct for missing security headers
   const criticalHeaders = ['Content-Security-Policy', 'X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options'];
+  
   for (const header of result.securityHeaders || []) {
     if (header.status === 'vulnerable') {
       score -= criticalHeaders.includes(header.name) ? 10 : 5;
@@ -286,57 +246,66 @@ function calculateOverallScore(result: Partial<AuditResult>): number {
     }
   }
   
-  // Deduct for exposed endpoints
   for (const endpoint of result.endpoints || []) {
     if (endpoint.status === 'accessible') {
-      switch (endpoint.risk) {
-        case 'critical': score -= 15; break;
-        case 'high': score -= 10; break;
-        case 'medium': score -= 5; break;
-        case 'low': score -= 2; break;
-      }
+      const deductions = { critical: 15, high: 10, medium: 5, low: 2, info: 0 };
+      score -= deductions[endpoint.risk] || 0;
     }
   }
   
-  // Deduct for user enumeration
-  if (result.userEnumeration?.found) {
-    score -= 15;
-  }
-  
-  // Deduct for exposed version/generator
-  if (result.wordpressInfo?.generator) {
-    score -= 5;
-  }
+  if (result.userEnumeration?.found) score -= 15;
+  if (result.wordpressInfo?.generator) score -= 5;
   
   return Math.max(0, Math.min(100, score));
 }
 
-export async function auditWordPress(url: string, onProgress?: (message: string) => void): Promise<AuditResult> {
+export interface AuditProgress {
+  step: string;
+  current: number;
+  total: number;
+  percentage: number;
+}
+
+export async function auditWordPress(
+  url: string, 
+  onProgress?: (progress: AuditProgress) => void
+): Promise<AuditResult> {
   const baseUrl = normalizeUrl(url);
+  const totalSteps = 4;
   
-  onProgress?.('Verificando conexión...');
+  const updateProgress = (step: string, current: number) => {
+    onProgress?.({
+      step,
+      current,
+      total: totalSteps,
+      percentage: Math.round((current / totalSteps) * 100),
+    });
+  };
   
-  // Check if it's WordPress
+  updateProgress('Verificando conexión...', 0);
+  
   let isWordPress = false;
+  let homeHtml = '';
+  
   try {
     const response = await fetchWithProxy(baseUrl);
-    const html = await response.text();
-    isWordPress = html.includes('wp-content') || html.includes('wp-includes') || html.includes('WordPress');
-  } catch (error) {
+    homeHtml = await response.text();
+    isWordPress = homeHtml.includes('wp-content') || homeHtml.includes('wp-includes') || homeHtml.includes('WordPress');
+  } catch {
     throw new Error('No se pudo conectar con el sitio web');
   }
   
-  onProgress?.('Analizando cabeceras de seguridad...');
-  const securityHeaders = await checkSecurityHeaders(baseUrl);
+  // Run checks in parallel where possible
+  updateProgress('Analizando seguridad...', 1);
   
-  onProgress?.('Comprobando endpoints sensibles...');
-  const endpoints = await checkEndpoints(baseUrl);
+  const [securityHeaders, endpoints, userEnumeration, wordpressInfo] = await Promise.all([
+    checkSecurityHeaders(baseUrl).then(r => { updateProgress('Verificando endpoints...', 2); return r; }),
+    checkEndpoints(baseUrl),
+    checkUserEnumeration(baseUrl).then(r => { updateProgress('Finalizando análisis...', 3); return r; }),
+    getWordPressInfo(baseUrl, homeHtml),
+  ]);
   
-  onProgress?.('Verificando enumeración de usuarios...');
-  const userEnumeration = await checkUserEnumeration(baseUrl);
-  
-  onProgress?.('Recopilando información de WordPress...');
-  const wordpressInfo = await getWordPressInfo(baseUrl);
+  updateProgress('Completado', 4);
   
   const result: AuditResult = {
     url: baseUrl,
