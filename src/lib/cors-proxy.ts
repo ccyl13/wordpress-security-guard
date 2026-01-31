@@ -27,7 +27,7 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       
       const response = await fetch(proxyUrl, {
         method: 'GET',
