@@ -122,7 +122,7 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
 
 async function checkEndpoints(baseUrl: string): Promise<EndpointCheck[]> {
   const urls = WP_ENDPOINTS.map(ep => baseUrl + ep.path);
-  const results = await checkEndpointsBatch(urls, 4);
+  const results = await checkEndpointsBatch(urls, 6);
   
   return WP_ENDPOINTS.map((endpoint) => {
     const fullUrl = baseUrl + endpoint.path;
