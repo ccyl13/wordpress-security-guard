@@ -1,39 +1,22 @@
 // CORS proxies for making requests from the browser
-// These are free public proxies - some may be unreliable
 const CORS_PROXIES = [
-  {
-    url: 'https://api.allorigins.win/get?url=',
-    parseResponse: async (response: Response) => {
-      const data = await response.json();
-      return new Response(data.contents, {
-        status: data.status?.http_code || 200,
-        headers: new Headers(),
-      });
-    },
-  },
-  {
-    url: 'https://corsproxy.org/?',
-    parseResponse: async (response: Response) => response,
-  },
-  {
-    url: 'https://proxy.cors.sh/',
-    parseResponse: async (response: Response) => response,
-  },
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.org/?',
 ];
 
 let currentProxyIndex = 0;
 
 export async function fetchWithProxy(url: string): Promise<Response> {
+  const encodedUrl = encodeURIComponent(url);
   const errors: string[] = [];
   
   for (let i = 0; i < CORS_PROXIES.length; i++) {
     const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
-    const proxy = CORS_PROXIES[proxyIndex];
-    const proxyUrl = proxy.url + encodeURIComponent(url);
+    const proxyUrl = CORS_PROXIES[proxyIndex] + encodedUrl;
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
       
       const response = await fetch(proxyUrl, {
         method: 'GET',
@@ -44,13 +27,8 @@ export async function fetchWithProxy(url: string): Promise<Response> {
       });
       
       clearTimeout(timeoutId);
-      
-      if (!response.ok && response.status !== 404 && response.status !== 403) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
       currentProxyIndex = proxyIndex;
-      return await proxy.parseResponse(response);
+      return response;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       errors.push(`Proxy ${proxyIndex}: ${errorMsg}`);
