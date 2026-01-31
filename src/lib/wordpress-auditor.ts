@@ -290,9 +290,24 @@ export async function auditWordPress(
   try {
     const response = await fetchWithProxy(baseUrl);
     homeHtml = await response.text();
-    isWordPress = homeHtml.includes('wp-content') || homeHtml.includes('wp-includes') || homeHtml.includes('WordPress');
-  } catch {
-    throw new Error('No se pudo conectar con el sitio web');
+    // Improved WordPress detection - check multiple indicators
+    const wpIndicators = [
+      'wp-content',
+      'wp-includes', 
+      'wp-json',
+      '/wp/',
+      'WordPress',
+      'wordpress',
+      'wp-emoji',
+      'woocommerce',
+      'generator" content="WordPress',
+      '/themes/',
+      '/plugins/',
+    ];
+    isWordPress = wpIndicators.some(indicator => homeHtml.includes(indicator));
+  } catch (err) {
+    console.error('Connection error:', err);
+    throw new Error('No se pudo conectar con el sitio web. Los proxies CORS pueden estar bloqueados.');
   }
   
   // Run checks in parallel where possible
