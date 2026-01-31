@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WP Security Auditor</title>
+    <script>
+      // Single Page App redirect for GitHub Pages
+      // Redirects 404s to index.html with the path as a query parameter
+      const path = window.location.pathname;
+      const repo = '/wordpress-security-guard';
+      if (path !== repo + '/' && path !== repo) {
+        window.location.replace(repo + '/?redirect=' + encodeURIComponent(path));
+      }
+    </script>
+    <meta http-equiv="refresh" content="0;url=/wordpress-security-guard/" />
+  </head>
+  <body>
+    <p>Redirecting...</p>
+  </body>
+</html>
