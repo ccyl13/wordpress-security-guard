@@ -50,13 +50,10 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      console.log(`[CORS] Trying ${proxy.name}...`);
-      
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: {
           'Accept': 'text/html,application/json,*/*',
-          'User-Agent': 'Mozilla/5.0 (compatible; WPSecurityAuditor/1.0)',
         },
         signal: controller.signal,
       });
@@ -65,7 +62,6 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
       
       // Check if response is actually successful and has content
       if (!response.ok && response.status !== 403 && response.status !== 401) {
-        console.log(`[CORS] ${proxy.name} returned status ${response.status}`);
         errors.push(`${proxy.name}: HTTP ${response.status}`);
         continue;
       }
@@ -76,7 +72,6 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
       
       // Reject empty or too short responses (proxy error pages)
       if (text.length < 100) {
-        console.log(`[CORS] ${proxy.name} returned empty/short response (${text.length} chars)`);
         errors.push(`${proxy.name}: Empty response`);
         continue;
       }
@@ -84,7 +79,6 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
       // Success! Update health
       proxyHealth.set(proxy.name, { failures: 0, lastSuccess: Date.now() });
       currentProxyIndex = proxyIndex;
-      console.log(`[CORS] Success with ${proxy.name} (${text.length} chars)`);
       
       // Create a new response with the text content
       const successResponse = new Response(text, {
@@ -101,7 +95,6 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
       return successResponse;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.log(`[CORS] ${proxy.name} failed: ${errorMsg}`);
       
       // Update health tracking
       const health = proxyHealth.get(proxy.name) || { failures: 0, lastSuccess: 0 };
