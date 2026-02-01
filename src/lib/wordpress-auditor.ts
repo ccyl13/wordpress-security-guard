@@ -169,13 +169,17 @@ function detectWpPaths(html: string): string[] {
 async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
   const result: UserEnumeration = { found: false, users: [], method: '' };
   
+  console.log(`[UserEnum] Checking paths: ${wpPaths.join(', ')}`);
+  
   // Try each path
   for (const wpPath of wpPaths) {
     const pathBase = baseUrl + wpPath;
     
     // Method 1: REST API (most common)
     try {
-      const response = await fetchWithProxy(pathBase + '/wp-json/wp/v2/users');
+      const apiUrl = pathBase + '/wp-json/wp/v2/users';
+      console.log(`[UserEnum] Trying: ${apiUrl}`);
+      const response = await fetchWithProxy(apiUrl);
       if (response.ok) {
         const text = await response.text();
         try {
@@ -188,38 +192,51 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
               name: u.name || u.slug,
               slug: u.slug,
             }));
-            console.log(`[UserEnum] Found ${result.users.length} users via REST API at ${wpPath || '/'}`);
+            console.log(`[UserEnum] ✓ Found ${result.users.length} users via REST API at ${wpPath || '/'}`);
             return result;
           }
-        } catch { /* not JSON */ }
+        } catch { 
+          console.log(`[UserEnum] Response not JSON at ${apiUrl}`);
+        }
       }
-    } catch { /* continue */ }
+    } catch (err) { 
+      console.log(`[UserEnum] REST API failed for ${wpPath}: ${err}`);
+    }
     
-    // Method 2: rest_route parameter
+    // Method 2: rest_route parameter (works when wp-json is blocked)
     try {
-      const response = await fetchWithProxy(pathBase + '/?rest_route=/wp/v2/users');
-      if (response.ok) {
-        const text = await response.text();
+      const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
+      console.log(`[UserEnum] Trying: ${routeUrl}`);
+      const response = await fetchWithProxy(routeUrl);
+      const text = await response.text();
+      
+      // Check if response looks like JSON (might be 200 even with HTML error page)
+      if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
         try {
           const users = JSON.parse(text);
           if (Array.isArray(users) && users.length > 0) {
             result.found = true;
-            result.method = `REST Route (${wpPath || '/'}?rest_route=/wp/v2/users)`;
+            result.method = `REST Route (${wpPath}/?rest_route=/wp/v2/users)`;
             result.users = users.slice(0, 10).map((u: any) => ({
               id: u.id,
               name: u.name || u.slug,
               slug: u.slug,
             }));
-            console.log(`[UserEnum] Found ${result.users.length} users via rest_route at ${wpPath || '/'}`);
+            console.log(`[UserEnum] ✓ Found ${result.users.length} users via rest_route at ${wpPath || '/'}`);
             return result;
           }
-        } catch { /* not JSON */ }
+        } catch { 
+          console.log(`[UserEnum] JSON parse failed for ${routeUrl}`);
+        }
       }
-    } catch { /* continue */ }
+    } catch (err) { 
+      console.log(`[UserEnum] rest_route failed for ${wpPath}: ${err}`);
+    }
   }
   
-  // Method 3: Author enumeration on root (check first 3 authors in parallel)
+  // Method 3: Author enumeration on root (fallback)
   try {
+    console.log(`[UserEnum] Trying author enumeration...`);
     const authorChecks = await Promise.all(
       [1, 2, 3].map(async (i) => {
         try {
@@ -239,10 +256,11 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
       result.found = true;
       result.method = 'Author Parameter (?author=N)';
       result.users = foundUsers as any[];
-      console.log(`[UserEnum] Found ${result.users.length} users via author parameter`);
+      console.log(`[UserEnum] ✓ Found ${result.users.length} users via author parameter`);
     }
   } catch { /* ignore */ }
   
+  console.log(`[UserEnum] Final result: found=${result.found}, users=${result.users.length}`);
   return result;
 }
 
