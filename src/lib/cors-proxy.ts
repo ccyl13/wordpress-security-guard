@@ -1,13 +1,30 @@
 // CORS proxies for making requests from the browser
+// Ordered by reliability and speed
 const CORS_PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-  'https://proxy.cors.sh/',
+  { url: 'https://api.allorigins.win/raw?url=', name: 'AllOrigins' },
+  { url: 'https://corsproxy.io/?', name: 'CorsProxy.io' },
+  { url: 'https://api.codetabs.com/v1/proxy?quest=', name: 'CodeTabs' },
 ];
 
 let currentProxyIndex = 0;
 const requestCache = new Map<string, { data: Response; timestamp: number }>();
 const CACHE_TTL = 60000; // 1 minute cache
+
+// Track which proxies are working
+const proxyHealth = new Map<string, { failures: number; lastSuccess: number }>();
+
+function getHealthyProxies(): typeof CORS_PROXIES {
+  const now = Date.now();
+  // Reset proxy health every 2 minutes
+  return CORS_PROXIES.filter(proxy => {
+    const health = proxyHealth.get(proxy.name);
+    if (!health) return true;
+    // Allow retry after 2 minutes even if failed before
+    if (now - health.lastSuccess > 120000) return true;
+    // Block proxies with 2+ consecutive failures
+    return health.failures < 2;
+  });
+}
 
 export async function fetchWithProxy(url: string, useCache = true): Promise<Response> {
   const encodedUrl = encodeURIComponent(url);
@@ -21,53 +38,81 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
   }
   
   const errors: string[] = [];
+  const healthyProxies = getHealthyProxies();
+  const proxiesToTry = healthyProxies.length > 0 ? healthyProxies : CORS_PROXIES;
   
-  for (let i = 0; i < CORS_PROXIES.length; i++) {
-    const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
-    const proxy = CORS_PROXIES[proxyIndex];
-    const proxyUrl = proxy + encodedUrl;
+  for (let i = 0; i < proxiesToTry.length; i++) {
+    const proxyIndex = (currentProxyIndex + i) % proxiesToTry.length;
+    const proxy = proxiesToTry[proxyIndex];
+    const proxyUrl = proxy.url + encodedUrl;
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      console.log(`[CORS] Trying proxy ${proxyIndex}: ${proxy.substring(0, 30)}...`);
+      console.log(`[CORS] Trying ${proxy.name}...`);
       
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: {
           'Accept': 'text/html,application/json,*/*',
+          'User-Agent': 'Mozilla/5.0 (compatible; WPSecurityAuditor/1.0)',
         },
         signal: controller.signal,
       });
       
       clearTimeout(timeoutId);
       
-      // Check if response is actually successful
+      // Check if response is actually successful and has content
       if (!response.ok && response.status !== 403 && response.status !== 401) {
-        console.log(`[CORS] Proxy ${proxyIndex} returned status ${response.status}`);
-        errors.push(`Proxy ${proxyIndex}: HTTP ${response.status}`);
+        console.log(`[CORS] ${proxy.name} returned status ${response.status}`);
+        errors.push(`${proxy.name}: HTTP ${response.status}`);
         continue;
       }
       
+      // Clone response to check content length
+      const cloned = response.clone();
+      const text = await cloned.text();
+      
+      // Reject empty or too short responses (proxy error pages)
+      if (text.length < 100) {
+        console.log(`[CORS] ${proxy.name} returned empty/short response (${text.length} chars)`);
+        errors.push(`${proxy.name}: Empty response`);
+        continue;
+      }
+      
+      // Success! Update health
+      proxyHealth.set(proxy.name, { failures: 0, lastSuccess: Date.now() });
       currentProxyIndex = proxyIndex;
-      console.log(`[CORS] Success with proxy ${proxyIndex}`);
+      console.log(`[CORS] Success with ${proxy.name} (${text.length} chars)`);
+      
+      // Create a new response with the text content
+      const successResponse = new Response(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
       
       // Cache successful responses
       if (useCache && response.ok) {
-        requestCache.set(url, { data: response.clone(), timestamp: Date.now() });
+        requestCache.set(url, { data: successResponse.clone(), timestamp: Date.now() });
       }
       
-      return response;
+      return successResponse;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.log(`[CORS] Proxy ${proxyIndex} failed: ${errorMsg}`);
-      errors.push(`Proxy ${proxyIndex}: ${errorMsg}`);
+      console.log(`[CORS] ${proxy.name} failed: ${errorMsg}`);
+      
+      // Update health tracking
+      const health = proxyHealth.get(proxy.name) || { failures: 0, lastSuccess: 0 };
+      proxyHealth.set(proxy.name, { ...health, failures: health.failures + 1 });
+      
+      errors.push(`${proxy.name}: ${errorMsg}`);
       continue;
     }
   }
   
-  throw new Error(`Todos los proxies CORS fallaron. Esto puede ocurrir si el sitio bloquea peticiones externas. Errores: ${errors.join(', ')}`);
+  throw new Error(`No se pudo conectar. Los proxies CORS pueden estar bloqueados por el sitio. Errores: ${errors.join(', ')}`);
 }
 
 export async function checkEndpointExists(url: string): Promise<{ exists: boolean; statusCode: number }> {
