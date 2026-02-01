@@ -235,28 +235,57 @@ async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPres
 
 function calculateOverallScore(result: Partial<AuditResult>): number {
   let score = 100;
+  let issuesFound = 0;
   
   const criticalHeaders = ['Content-Security-Policy', 'X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options'];
   
+  // Security headers analysis
   for (const header of result.securityHeaders || []) {
     if (header.status === 'vulnerable') {
-      score -= criticalHeaders.includes(header.name) ? 10 : 5;
+      const deduction = criticalHeaders.includes(header.name) ? 8 : 4;
+      score -= deduction;
+      issuesFound++;
     } else if (header.status === 'warning') {
-      score -= 3;
+      score -= 2;
+      issuesFound++;
     }
   }
   
+  // Endpoint accessibility analysis
   for (const endpoint of result.endpoints || []) {
     if (endpoint.status === 'accessible') {
-      const deductions = { critical: 15, high: 10, medium: 5, low: 2, info: 0 };
+      const deductions = { critical: 12, high: 8, medium: 4, low: 2, info: 0 };
       score -= deductions[endpoint.risk] || 0;
+      if (endpoint.risk !== 'info') issuesFound++;
     }
   }
   
-  if (result.userEnumeration?.found) score -= 15;
-  if (result.wordpressInfo?.generator) score -= 5;
+  // User enumeration (major issue)
+  if (result.userEnumeration?.found) {
+    score -= 12;
+    issuesFound++;
+  }
   
-  return Math.max(0, Math.min(100, score));
+  // Version disclosure
+  if (result.wordpressInfo?.generator) {
+    score -= 4;
+    issuesFound++;
+  }
+  
+  // Ensure minimum score of 10 if there are issues but site loaded
+  const hasValidData = (result.securityHeaders?.length || 0) > 0 || (result.endpoints?.length || 0) > 0;
+  if (hasValidData && score < 10) {
+    score = 10;
+  }
+  
+  // If no issues found, it's a good score
+  if (issuesFound === 0 && hasValidData) {
+    score = 95; // Small deduction for unknown factors
+  }
+  
+  console.log(`[Score] Calculated score: ${score}, Issues found: ${issuesFound}`);
+  
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 export interface AuditProgress {
@@ -290,21 +319,41 @@ export async function auditWordPress(
   try {
     const response = await fetchWithProxy(baseUrl);
     homeHtml = await response.text();
-    // Improved WordPress detection - check multiple indicators
+    
+    console.log(`[WP] Received ${homeHtml.length} chars from ${baseUrl}`);
+    
+    // Improved WordPress detection - check multiple indicators with different weights
     const wpIndicators = [
-      'wp-content',
-      'wp-includes', 
-      'wp-json',
-      '/wp/',
-      'WordPress',
-      'wordpress',
-      'wp-emoji',
-      'woocommerce',
-      'generator" content="WordPress',
-      '/themes/',
-      '/plugins/',
+      // Strong indicators (definitely WordPress)
+      { pattern: 'wp-content', strong: true },
+      { pattern: 'wp-includes', strong: true },
+      { pattern: 'wp-json', strong: true },
+      { pattern: 'generator" content="WordPress', strong: true },
+      { pattern: 'name="generator" content="WordPress', strong: true },
+      { pattern: '/wp-admin/', strong: true },
+      // Medium indicators 
+      { pattern: 'wordpress', strong: false },
+      { pattern: 'WordPress', strong: false },
+      { pattern: 'wp-emoji', strong: false },
+      { pattern: 'woocommerce', strong: true },
+      { pattern: '/themes/', strong: false },
+      { pattern: '/plugins/', strong: false },
+      { pattern: 'xmlrpc.php', strong: true },
+      { pattern: 'wp-login.php', strong: true },
+      { pattern: 'wp-block', strong: true },
+      { pattern: 'has-sidebar', strong: false },
     ];
-    isWordPress = wpIndicators.some(indicator => homeHtml.includes(indicator));
+    
+    const strongMatches = wpIndicators.filter(i => i.strong && homeHtml.includes(i.pattern));
+    const weakMatches = wpIndicators.filter(i => !i.strong && homeHtml.includes(i.pattern));
+    
+    // WordPress if: 1 strong match OR 2+ weak matches
+    isWordPress = strongMatches.length >= 1 || weakMatches.length >= 2;
+    
+    console.log(`[WP] Detection - Strong matches: ${strongMatches.map(m => m.pattern).join(', ')}`);
+    console.log(`[WP] Detection - Weak matches: ${weakMatches.map(m => m.pattern).join(', ')}`);
+    console.log(`[WP] Is WordPress: ${isWordPress}`);
+    
   } catch (err) {
     console.error('Connection error:', err);
     throw new Error('No se pudo conectar con el sitio web. Los proxies CORS pueden estar bloqueados.');
