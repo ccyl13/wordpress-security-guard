@@ -113,8 +113,8 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
         description: 'Revela tecnología del backend',
       });
     }
-  } catch (error) {
-    console.error('Error checking headers:', error);
+  } catch {
+    // Headers check failed silently
   }
   
   return headers;
@@ -169,8 +169,6 @@ function detectWpPaths(html: string): string[] {
 async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
   const result: UserEnumeration = { found: false, users: [], method: '' };
   
-  console.log(`[UserEnum] Checking paths: ${wpPaths.join(', ')}`);
-  
   // Try each path
   for (const wpPath of wpPaths) {
     const pathBase = baseUrl + wpPath;
@@ -178,7 +176,6 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
     // Method 1: REST API (most common)
     try {
       const apiUrl = pathBase + '/wp-json/wp/v2/users';
-      console.log(`[UserEnum] Trying: ${apiUrl}`);
       const response = await fetchWithProxy(apiUrl);
       if (response.ok) {
         const text = await response.text();
@@ -192,25 +189,19 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
               name: u.name || u.slug,
               slug: u.slug,
             }));
-            console.log(`[UserEnum] ✓ Found ${result.users.length} users via REST API at ${wpPath || '/'}`);
             return result;
           }
-        } catch { 
-          console.log(`[UserEnum] Response not JSON at ${apiUrl}`);
-        }
+        } catch { /* not JSON */ }
       }
-    } catch (err) { 
-      console.log(`[UserEnum] REST API failed for ${wpPath}: ${err}`);
-    }
+    } catch { /* continue */ }
     
     // Method 2: rest_route parameter (works when wp-json is blocked)
     try {
       const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
-      console.log(`[UserEnum] Trying: ${routeUrl}`);
       const response = await fetchWithProxy(routeUrl);
       const text = await response.text();
       
-      // Check if response looks like JSON (might be 200 even with HTML error page)
+      // Check if response looks like JSON
       if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
         try {
           const users = JSON.parse(text);
@@ -222,21 +213,15 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
               name: u.name || u.slug,
               slug: u.slug,
             }));
-            console.log(`[UserEnum] ✓ Found ${result.users.length} users via rest_route at ${wpPath || '/'}`);
             return result;
           }
-        } catch { 
-          console.log(`[UserEnum] JSON parse failed for ${routeUrl}`);
-        }
+        } catch { /* not valid JSON */ }
       }
-    } catch (err) { 
-      console.log(`[UserEnum] rest_route failed for ${wpPath}: ${err}`);
-    }
+    } catch { /* continue */ }
   }
   
   // Method 3: Author enumeration on root (fallback)
   try {
-    console.log(`[UserEnum] Trying author enumeration...`);
     const authorChecks = await Promise.all(
       [1, 2, 3].map(async (i) => {
         try {
@@ -256,11 +241,9 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
       result.found = true;
       result.method = 'Author Parameter (?author=N)';
       result.users = foundUsers as any[];
-      console.log(`[UserEnum] ✓ Found ${result.users.length} users via author parameter`);
     }
   } catch { /* ignore */ }
   
-  console.log(`[UserEnum] Final result: found=${result.found}, users=${result.users.length}`);
   return result;
 }
 
@@ -339,10 +322,8 @@ function calculateOverallScore(result: Partial<AuditResult>): number {
   
   // If no issues found, it's a good score
   if (issuesFound === 0 && hasValidData) {
-    score = 95; // Small deduction for unknown factors
+    score = 95;
   }
-  
-  console.log(`[Score] Calculated score: ${score}, Issues found: ${issuesFound}`);
   
   return Math.max(0, Math.min(100, Math.round(score)));
 }
@@ -379,9 +360,7 @@ export async function auditWordPress(
     const response = await fetchWithProxy(baseUrl);
     homeHtml = await response.text();
     
-    console.log(`[WP] Received ${homeHtml.length} chars from ${baseUrl}`);
-    
-    // Improved WordPress detection - check multiple indicators with different weights
+    // WordPress detection - check multiple indicators with different weights
     const wpIndicators = [
       // Strong indicators (definitely WordPress)
       { pattern: 'wp-content', strong: true },
@@ -390,16 +369,16 @@ export async function auditWordPress(
       { pattern: 'generator" content="WordPress', strong: true },
       { pattern: 'name="generator" content="WordPress', strong: true },
       { pattern: '/wp-admin/', strong: true },
-      // Medium indicators 
-      { pattern: 'wordpress', strong: false },
-      { pattern: 'WordPress', strong: false },
-      { pattern: 'wp-emoji', strong: false },
       { pattern: 'woocommerce', strong: true },
-      { pattern: '/themes/', strong: false },
-      { pattern: '/plugins/', strong: false },
       { pattern: 'xmlrpc.php', strong: true },
       { pattern: 'wp-login.php', strong: true },
       { pattern: 'wp-block', strong: true },
+      // Weak indicators 
+      { pattern: 'wordpress', strong: false },
+      { pattern: 'WordPress', strong: false },
+      { pattern: 'wp-emoji', strong: false },
+      { pattern: '/themes/', strong: false },
+      { pattern: '/plugins/', strong: false },
       { pattern: 'has-sidebar', strong: false },
     ];
     
@@ -409,18 +388,12 @@ export async function auditWordPress(
     // WordPress if: 1 strong match OR 2+ weak matches
     isWordPress = strongMatches.length >= 1 || weakMatches.length >= 2;
     
-    console.log(`[WP] Detection - Strong matches: ${strongMatches.map(m => m.pattern).join(', ')}`);
-    console.log(`[WP] Detection - Weak matches: ${weakMatches.map(m => m.pattern).join(', ')}`);
-    console.log(`[WP] Is WordPress: ${isWordPress}`);
-    
-  } catch (err) {
-    console.error('Connection error:', err);
+  } catch {
     throw new Error('No se pudo conectar con el sitio web. Los proxies CORS pueden estar bloqueados.');
   }
   
   // Detect WordPress paths from HTML
   const wpPaths = detectWpPaths(homeHtml);
-  console.log(`[WP] Detected WP paths: ${wpPaths.join(', ')}`);
   
   // Run checks in parallel where possible
   updateProgress('Analizando seguridad...', 1);
