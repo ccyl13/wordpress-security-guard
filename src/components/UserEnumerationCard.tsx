@@ -3,6 +3,7 @@ import { Users, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { UserEnumeration } from '@/types/wordpress-audit';
 import { cn } from '@/lib/utils';
+import { SecurityReferenceBadges } from './SecurityReferenceBadges';
 
 interface UserEnumerationCardProps {
   data: UserEnumeration;
@@ -33,6 +34,9 @@ export function UserEnumerationCard({ data }: UserEnumerationCardProps) {
               <p className="text-sm text-muted-foreground mt-1">
                 Se pueden enumerar usuarios mediante: <code className="text-xs bg-background px-1 py-0.5 rounded">{data.method}</code>
               </p>
+              {data.reference && (
+                <SecurityReferenceBadges reference={data.reference} />
+              )}
             </div>
             
             {data.users.length > 0 && (
