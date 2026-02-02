@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Globe, Check, X, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Globe, Check, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { EndpointCheck } from '@/types/wordpress-audit';
+import { SecurityReferenceBadges } from './SecurityReferenceBadges';
 
 interface EndpointsCardProps {
   endpoints: EndpointCheck[];
@@ -47,39 +48,46 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
           <div
             key={endpoint.url}
             className={cn(
-              "flex items-center justify-between p-3 rounded-lg border transition-colors",
+              "flex flex-col p-3 rounded-lg border transition-colors",
               endpoint.status === 'accessible' 
                 ? 'bg-red-500/5 border-red-500/20' 
                 : 'bg-green-500/5 border-green-500/20'
             )}
           >
-            <div className="flex items-center gap-3">
-              {endpoint.status === 'accessible' ? (
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-              ) : (
-                <Check className="w-5 h-5 text-green-400" />
-              )}
-              <div>
-                <span className="font-semibold text-sm">{endpoint.name}</span>
-                <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {endpoint.status === 'accessible' ? (
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                ) : (
+                  <Check className="w-5 h-5 text-green-400" />
+                )}
+                <div>
+                  <span className="font-semibold text-sm">{endpoint.name}</span>
+                  <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {getRiskBadge(endpoint.risk, endpoint.status === 'accessible')}
+                {endpoint.statusCode > 0 && (
+                  <code className="text-xs text-muted-foreground">{endpoint.statusCode}</code>
+                )}
+                {endpoint.status === 'accessible' && (
+                  <a 
+                    href={endpoint.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {getRiskBadge(endpoint.risk, endpoint.status === 'accessible')}
-              {endpoint.statusCode > 0 && (
-                <code className="text-xs text-muted-foreground">{endpoint.statusCode}</code>
-              )}
-              {endpoint.status === 'accessible' && (
-                <a 
-                  href={endpoint.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              )}
-            </div>
+            {endpoint.status === 'accessible' && endpoint.reference && (
+              <div className="ml-8">
+                <SecurityReferenceBadges reference={endpoint.reference} compact />
+              </div>
+            )}
           </div>
         ))}
       </CardContent>

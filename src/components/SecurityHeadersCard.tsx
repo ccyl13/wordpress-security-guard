@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { SecurityReferenceBadges } from './SecurityReferenceBadges';
 
 interface SecurityHeadersCardProps {
   headers: SecurityHeader[];
@@ -61,31 +62,38 @@ export function SecurityHeadersCard({ headers }: SecurityHeadersCardProps) {
           <div
             key={header.name}
             className={cn(
-              "flex items-center justify-between p-3 rounded-lg border transition-colors",
+              "flex flex-col p-3 rounded-lg border transition-colors",
               getStatusBg(header.status)
             )}
           >
-            <div className="flex items-center gap-3">
-              {getStatusIcon(header.status)}
-              <span className="font-mono text-sm">{header.name}</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p>{header.description}</p>
-                </TooltipContent>
-              </Tooltip>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {getStatusIcon(header.status)}
+                <span className="font-mono text-sm">{header.name}</span>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>{header.description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="text-right">
+                {header.value ? (
+                  <code className="text-xs text-muted-foreground bg-background/50 px-2 py-1 rounded max-w-[200px] truncate block">
+                    {header.value.length > 40 ? header.value.slice(0, 40) + '...' : header.value}
+                  </code>
+                ) : (
+                  <span className="text-xs text-red-400">No configurada</span>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              {header.value ? (
-                <code className="text-xs text-muted-foreground bg-background/50 px-2 py-1 rounded max-w-[200px] truncate block">
-                  {header.value.length > 40 ? header.value.slice(0, 40) + '...' : header.value}
-                </code>
-              ) : (
-                <span className="text-xs text-red-400">No configurada</span>
-              )}
-            </div>
+            {header.reference && (
+              <div className="ml-8">
+                <SecurityReferenceBadges reference={header.reference} compact />
+              </div>
+            )}
           </div>
         ))}
       </CardContent>

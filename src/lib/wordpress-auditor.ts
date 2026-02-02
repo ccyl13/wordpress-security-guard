@@ -1,5 +1,13 @@
-import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo } from '@/types/wordpress-audit';
+import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore } from '@/types/wordpress-audit';
+import { getCvssSeverity } from '@/types/wordpress-audit';
 import { fetchWithProxy, checkEndpointsBatch } from './cors-proxy';
+import { 
+  HEADER_REFERENCES, 
+  WP_ENDPOINTS, 
+  USER_ENUMERATION_REFERENCE,
+  detectWaf,
+  calculateOverallCvss
+} from './security-references';
 
 const SECURITY_HEADERS_TO_CHECK = [
   { name: 'Content-Security-Policy', critical: true },
@@ -11,19 +19,6 @@ const SECURITY_HEADERS_TO_CHECK = [
   { name: 'Permissions-Policy', critical: false },
   { name: 'Cross-Origin-Embedder-Policy', critical: false },
   { name: 'Cross-Origin-Opener-Policy', critical: false },
-];
-
-const WP_ENDPOINTS = [
-  { path: '/xmlrpc.php', name: 'XML-RPC', risk: 'critical' as const, description: 'Puede usarse para ataques de fuerza bruta y DDoS' },
-  { path: '/wp-login.php', name: 'WP Login', risk: 'medium' as const, description: 'Página de login expuesta' },
-  { path: '/wp-admin/', name: 'WP Admin', risk: 'medium' as const, description: 'Panel de administración accesible' },
-  { path: '/wp-json/', name: 'REST API', risk: 'info' as const, description: 'API REST activa' },
-  { path: '/wp-content/debug.log', name: 'Debug Log', risk: 'critical' as const, description: 'Archivo de debug con info sensible' },
-  { path: '/wp-config.php.bak', name: 'Config Backup', risk: 'critical' as const, description: 'Backup con credenciales' },
-  { path: '/.git/', name: 'Git Exposed', risk: 'critical' as const, description: 'Repositorio Git expuesto' },
-  { path: '/readme.html', name: 'Readme', risk: 'low' as const, description: 'Revela versión de WordPress' },
-  { path: '/wp-includes/', name: 'WP Includes', risk: 'info' as const, description: 'Directorio includes accesible' },
-  { path: '/wp-content/uploads/', name: 'Uploads', risk: 'low' as const, description: 'Directorio uploads listable' },
 ];
 
 function normalizeUrl(url: string): string {
@@ -77,19 +72,25 @@ function getHeaderDescription(name: string, value: string | null): string {
   return descriptions[name.toLowerCase()] || `Configurado: ${value.substring(0, 50)}...`;
 }
 
-async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> {
+async function checkSecurityHeaders(baseUrl: string): Promise<{ headers: SecurityHeader[]; wafDetected: string | null }> {
   const headers: SecurityHeader[] = [];
+  let wafDetected: string | null = null;
   
   try {
     const response = await fetchWithProxy(baseUrl);
     
+    // Detect WAF
+    wafDetected = detectWaf(response.headers);
+    
     for (const header of SECURITY_HEADERS_TO_CHECK) {
       const value = response.headers.get(header.name);
+      const status = getHeaderStatus(header.name, value);
       headers.push({
         name: header.name,
         value,
-        status: getHeaderStatus(header.name, value),
+        status,
         description: getHeaderDescription(header.name, value),
+        reference: status === 'vulnerable' ? HEADER_REFERENCES[header.name] : undefined,
       });
     }
     
@@ -101,6 +102,7 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
         value: serverHeader,
         status: 'warning',
         description: 'Revela información del servidor',
+        reference: HEADER_REFERENCES['Server'],
       });
     }
     
@@ -111,13 +113,14 @@ async function checkSecurityHeaders(baseUrl: string): Promise<SecurityHeader[]> 
         value: poweredBy,
         status: 'warning',
         description: 'Revela tecnología del backend',
+        reference: HEADER_REFERENCES['X-Powered-By'],
       });
     }
   } catch {
     // Headers check failed silently
   }
   
-  return headers;
+  return { headers, wafDetected };
 }
 
 async function checkEndpoints(baseUrl: string): Promise<EndpointCheck[]> {
@@ -135,6 +138,7 @@ async function checkEndpoints(baseUrl: string): Promise<EndpointCheck[]> {
       statusCode: result.statusCode,
       description: endpoint.description,
       risk: endpoint.risk,
+      reference: result.exists ? endpoint.reference : undefined,
     };
   });
 }
@@ -167,7 +171,12 @@ function detectWpPaths(html: string): string[] {
 }
 
 async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
-  const result: UserEnumeration = { found: false, users: [], method: '' };
+  const result: UserEnumeration = { 
+    found: false, 
+    users: [], 
+    method: '',
+    reference: USER_ENUMERATION_REFERENCE,
+  };
   
   // Try each path
   for (const wpPath of wpPaths) {
@@ -253,6 +262,8 @@ async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPres
     theme: null,
     generator: false,
     readme: false,
+    wafDetected: null,
+    sslInfo: null,
   };
   
   // Check for generator meta tag
@@ -271,6 +282,11 @@ async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPres
   // Check for theme
   const themeMatch = html.match(/wp-content\/themes\/([^\/\"]+)/);
   if (themeMatch) info.theme = themeMatch[1];
+  
+  // Check SSL (basic - just verify HTTPS works)
+  if (baseUrl.startsWith('https://')) {
+    info.sslInfo = { valid: true };
+  }
   
   return info;
 }
@@ -398,24 +414,36 @@ export async function auditWordPress(
   // Run checks in parallel where possible
   updateProgress('Analizando seguridad...', 1);
   
-  const [securityHeaders, endpoints, userEnumeration, wordpressInfo] = await Promise.all([
+  const [headersResult, endpoints, userEnumeration, wordpressInfo] = await Promise.all([
     checkSecurityHeaders(baseUrl).then(r => { updateProgress('Verificando endpoints...', 2); return r; }),
     checkEndpoints(baseUrl),
     checkUserEnumeration(baseUrl, wpPaths).then(r => { updateProgress('Finalizando análisis...', 3); return r; }),
     getWordPressInfo(baseUrl, homeHtml),
   ]);
   
+  // Add WAF detection to wordpressInfo
+  wordpressInfo.wafDetected = headersResult.wafDetected;
+  
   updateProgress('Completado', 4);
+  
+  // Calculate CVSS overall
+  const cvssOverall = calculateOverallCvss(
+    headersResult.headers,
+    endpoints,
+    userEnumeration.found,
+    wordpressInfo.generator
+  );
   
   const result: AuditResult = {
     url: baseUrl,
     timestamp: new Date(),
     isWordPress,
-    securityHeaders,
+    securityHeaders: headersResult.headers,
     endpoints,
     userEnumeration,
     wordpressInfo,
     overallScore: 0,
+    cvssOverall,
   };
   
   result.overallScore = calculateOverallScore(result);

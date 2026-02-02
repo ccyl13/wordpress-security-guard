@@ -10,6 +10,7 @@ import { AuditLoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ExportButton } from '@/components/ExportButton';
 import { AuditHistory } from '@/components/AuditHistory';
+import { OverallCvssCard } from '@/components/SecurityReferenceBadges';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
 import type { AuditResult } from '@/types/wordpress-audit';
@@ -135,9 +136,12 @@ const Index = () => {
               </Alert>
             )}
 
-            {/* Score */}
-            <div className="flex justify-center mb-12">
+            {/* Score and CVSS */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-8 mb-12">
               <ScoreGauge score={result.overallScore} />
+              {result.cvssOverall && (
+                <OverallCvssCard cvss={result.cvssOverall} />
+              )}
             </div>
 
             {/* Results Grid */}
