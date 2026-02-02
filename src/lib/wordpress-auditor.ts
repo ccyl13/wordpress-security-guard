@@ -163,11 +163,27 @@ function detectWpPaths(html: string): string[] {
     }
   }
   
-  // Common WordPress subdirectory names
-  const commonPaths = ['/blog', '/wordpress', '/wp', '/site', '/web'];
+  // Look for links to blog or WordPress paths
+  const linkMatches = html.matchAll(/href=["'](\/[^"']+?)\/(?:wp-admin|wp-login|feed)/gi);
+  for (const match of linkMatches) {
+    if (match[1]) {
+      paths.add(match[1]);
+    }
+  }
+  
+  // Common WordPress subdirectory names - check these FIRST before root
+  const commonPaths = ['/blog', '/wordpress', '/wp', '/site', '/web', '/news', '/articles'];
   commonPaths.forEach(p => paths.add(p));
   
-  return Array.from(paths);
+  // Return with common paths first (more likely to be WordPress subdirectories)
+  const result = Array.from(paths);
+  return result.sort((a, b) => {
+    if (a === '') return 1; // Root last
+    if (b === '') return -1;
+    if (commonPaths.includes(a)) return -1; // Common paths first
+    if (commonPaths.includes(b)) return 1;
+    return 0;
+  });
 }
 
 async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
@@ -178,11 +194,44 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
     reference: USER_ENUMERATION_REFERENCE,
   };
   
+  // Ensure common WordPress paths are checked first
+  const pathsToCheck = new Set(wpPaths);
+  ['/blog', '/wordpress', '/wp', ''].forEach(p => pathsToCheck.add(p));
+  const orderedPaths = Array.from(pathsToCheck).sort((a, b) => {
+    if (a === '') return 1; // Root last
+    if (b === '') return -1;
+    return 0;
+  });
+  
   // Try each path
-  for (const wpPath of wpPaths) {
+  for (const wpPath of orderedPaths) {
     const pathBase = baseUrl + wpPath;
     
-    // Method 1: REST API (most common)
+    // Method 1: rest_route parameter FIRST (works more reliably, especially for subdirectories)
+    try {
+      const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
+      const response = await fetchWithProxy(routeUrl);
+      const text = await response.text();
+      
+      // Check if response looks like JSON
+      if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
+        try {
+          const users = JSON.parse(text);
+          if (Array.isArray(users) && users.length > 0) {
+            result.found = true;
+            result.method = `REST Route (${wpPath || '/'}?rest_route=/wp/v2/users)`;
+            result.users = users.slice(0, 10).map((u: any) => ({
+              id: u.id,
+              name: u.name || u.slug,
+              slug: u.slug,
+            }));
+            return result;
+          }
+        } catch { /* not valid JSON */ }
+      }
+    } catch { /* continue */ }
+    
+    // Method 2: REST API endpoint
     try {
       const apiUrl = pathBase + '/wp-json/wp/v2/users';
       const response = await fetchWithProxy(apiUrl);
@@ -203,55 +252,35 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
         } catch { /* not JSON */ }
       }
     } catch { /* continue */ }
-    
-    // Method 2: rest_route parameter (works when wp-json is blocked)
-    try {
-      const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
-      const response = await fetchWithProxy(routeUrl);
-      const text = await response.text();
-      
-      // Check if response looks like JSON
-      if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
-        try {
-          const users = JSON.parse(text);
-          if (Array.isArray(users) && users.length > 0) {
-            result.found = true;
-            result.method = `REST Route (${wpPath}/?rest_route=/wp/v2/users)`;
-            result.users = users.slice(0, 10).map((u: any) => ({
-              id: u.id,
-              name: u.name || u.slug,
-              slug: u.slug,
-            }));
-            return result;
-          }
-        } catch { /* not valid JSON */ }
-      }
-    } catch { /* continue */ }
   }
   
-  // Method 3: Author enumeration on root (fallback)
-  try {
-    const authorChecks = await Promise.all(
-      [1, 2, 3].map(async (i) => {
-        try {
-          const response = await fetchWithProxy(baseUrl + `/?author=${i}`);
-          const html = await response.text();
-          const authorMatch = html.match(/author\/([^\/\"]+)/);
-          if (authorMatch) {
-            return { id: i, name: authorMatch[1], slug: authorMatch[1] };
-          }
-        } catch { /* ignore */ }
-        return null;
-      })
-    );
-    
-    const foundUsers = authorChecks.filter(Boolean);
-    if (foundUsers.length > 0) {
-      result.found = true;
-      result.method = 'Author Parameter (?author=N)';
-      result.users = foundUsers as any[];
-    }
-  } catch { /* ignore */ }
+  // Method 3: Author enumeration (fallback) - try on all paths
+  for (const wpPath of orderedPaths) {
+    const pathBase = baseUrl + wpPath;
+    try {
+      const authorChecks = await Promise.all(
+        [1, 2, 3].map(async (i) => {
+          try {
+            const response = await fetchWithProxy(pathBase + `/?author=${i}`);
+            const html = await response.text();
+            const authorMatch = html.match(/author\/([^\/\"]+)/);
+            if (authorMatch) {
+              return { id: i, name: authorMatch[1], slug: authorMatch[1] };
+            }
+          } catch { /* ignore */ }
+          return null;
+        })
+      );
+      
+      const foundUsers = authorChecks.filter(Boolean);
+      if (foundUsers.length > 0) {
+        result.found = true;
+        result.method = `Author Parameter (${wpPath || '/'}?author=N)`;
+        result.users = foundUsers as any[];
+        return result;
+      }
+    } catch { /* ignore */ }
+  }
   
   return result;
 }
@@ -371,6 +400,7 @@ export async function auditWordPress(
   
   let isWordPress = false;
   let homeHtml = '';
+  let detectedWpPath = '';
   
   try {
     const response = await fetchWithProxy(baseUrl);
@@ -403,6 +433,26 @@ export async function auditWordPress(
     
     // WordPress if: 1 strong match OR 2+ weak matches
     isWordPress = strongMatches.length >= 1 || weakMatches.length >= 2;
+    
+    // If not detected on homepage, check common subdirectories
+    if (!isWordPress) {
+      const commonWpPaths = ['/blog', '/wordpress', '/wp', '/news'];
+      for (const path of commonWpPaths) {
+        try {
+          const subResponse = await fetchWithProxy(baseUrl + path);
+          const subHtml = await subResponse.text();
+          const subStrongMatches = wpIndicators.filter(i => i.strong && subHtml.includes(i.pattern));
+          const subWeakMatches = wpIndicators.filter(i => !i.strong && subHtml.includes(i.pattern));
+          
+          if (subStrongMatches.length >= 1 || subWeakMatches.length >= 2) {
+            isWordPress = true;
+            detectedWpPath = path;
+            homeHtml = subHtml; // Use this for path detection
+            break;
+          }
+        } catch { /* continue checking */ }
+      }
+    }
     
   } catch {
     throw new Error('No se pudo conectar con el sitio web. Los proxies CORS pueden estar bloqueados.');
