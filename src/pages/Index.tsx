@@ -12,7 +12,7 @@ import { AuditHistory } from '@/components/AuditHistory';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
 import type { AuditResult } from '@/types/wordpress-audit';
-import { Terminal, AlertTriangle, ShieldOff, Shield, MessageCircle, Mail } from 'lucide-react';
+import { AlertTriangle, ShieldOff, Shield, MessageCircle, Mail } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import jiratekLogo from '@/assets/logo-jiratek.jpg';
 
@@ -86,10 +86,6 @@ const Index = () => {
       {/* Hero Section */}
       <section className="py-16 px-4">
         <div className="container mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-fade-in">
-            <Terminal className="w-4 h-4" />
-            100% Frontend • Sin Backend • GitHub Pages Ready
-          </div>
           <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tight animate-fade-in">
             Audita la seguridad de<br />
             <span className="text-primary">cualquier WordPress</span>
