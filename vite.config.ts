@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: '/wordpress-security-guard/',
+  base: mode === 'production' ? '/wordpress-security-guard/' : '/',
   server: {
     host: "::",
     port: 8080,
