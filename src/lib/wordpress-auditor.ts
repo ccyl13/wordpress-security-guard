@@ -1,4 +1,4 @@
-import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore } from '@/types/wordpress-audit';
+import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore, WordPressDetection } from '@/types/wordpress-audit';
 import { getCvssSeverity } from '@/types/wordpress-audit';
 import { fetchWithProxy, checkEndpointsBatch } from './cors-proxy';
 import { 
@@ -189,10 +189,13 @@ function detectWpPaths(html: string): string[] {
 async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
   const result: UserEnumeration = { 
     found: false, 
+    status: 'not_found',
     users: [], 
     method: '',
     reference: USER_ENUMERATION_REFERENCE,
   };
+  
+  const blockedCodes = [401, 403, 406, 429];
   
   // Ensure common WordPress paths are checked first
   const pathsToCheck = new Set(wpPaths);
@@ -211,6 +214,14 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
     try {
       const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
       const response = await fetchWithProxy(routeUrl);
+      
+      // Check if blocked/protected
+      if (blockedCodes.includes(response.status)) {
+        result.status = 'protected';
+        result.protectionDetails = `Endpoint protegido (HTTP ${response.status}) en ${wpPath || '/'}`;
+        continue;
+      }
+      
       const text = await response.text();
       
       // Check if response looks like JSON
@@ -219,6 +230,7 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
           const users = JSON.parse(text);
           if (Array.isArray(users) && users.length > 0) {
             result.found = true;
+            result.status = 'found';
             result.method = `REST Route (${wpPath || '/'}?rest_route=/wp/v2/users)`;
             result.users = users.slice(0, 10).map((u: any) => ({
               id: u.id,
@@ -235,12 +247,20 @@ async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): 
     try {
       const apiUrl = pathBase + '/wp-json/wp/v2/users';
       const response = await fetchWithProxy(apiUrl);
+      
+      if (blockedCodes.includes(response.status)) {
+        result.status = 'protected';
+        result.protectionDetails = `REST API protegida (HTTP ${response.status}) en ${wpPath || '/'}`;
+        continue;
+      }
+      
       if (response.ok) {
         const text = await response.text();
         try {
           const users = JSON.parse(text);
           if (Array.isArray(users) && users.length > 0) {
             result.found = true;
+            result.status = 'found';
             result.method = `REST API (${wpPath || '/'}/wp-json/wp/v2/users)`;
             result.users = users.slice(0, 10).map((u: any) => ({
               id: u.id,
@@ -399,12 +419,31 @@ export async function auditWordPress(
   updateProgress('Verificando conexión...', 0);
   
   let isWordPress = false;
+  let wpDetection: WordPressDetection = 'not_detected';
+  let wpDetectionDetails = '';
   let homeHtml = '';
   let detectedWpPath = '';
+  let wasBlocked = false;
+  
+  const BLOCKING_CODES = [403, 406, 429];
   
   try {
     const response = await fetchWithProxy(baseUrl);
     homeHtml = await response.text();
+    
+    // Check if response looks like a block/captcha page
+    if (BLOCKING_CODES.includes(response.status)) {
+      wasBlocked = true;
+      wpDetectionDetails = `El sitio devolvió HTTP ${response.status} — posible WAF, captcha o protección anti-bot`;
+    }
+    
+    // Check for common block page indicators in the HTML
+    const blockIndicators = ['captcha', 'challenge-platform', 'cf-browser-verification', 'access denied', 'forbidden', 'blocked'];
+    const lowerHtml = homeHtml.toLowerCase();
+    if (blockIndicators.some(indicator => lowerHtml.includes(indicator)) && homeHtml.length < 5000) {
+      wasBlocked = true;
+      wpDetectionDetails = 'Se detectó una página de bloqueo/captcha — el WAF puede estar impidiendo el análisis';
+    }
     
     // WordPress detection - check multiple indicators with different weights
     const wpIndicators = [
@@ -441,17 +480,39 @@ export async function auditWordPress(
         try {
           const subResponse = await fetchWithProxy(baseUrl + path);
           const subHtml = await subResponse.text();
+          
+          if (BLOCKING_CODES.includes(subResponse.status)) {
+            wasBlocked = true;
+            continue;
+          }
+          
           const subStrongMatches = wpIndicators.filter(i => i.strong && subHtml.includes(i.pattern));
           const subWeakMatches = wpIndicators.filter(i => !i.strong && subHtml.includes(i.pattern));
           
           if (subStrongMatches.length >= 1 || subWeakMatches.length >= 2) {
             isWordPress = true;
             detectedWpPath = path;
-            homeHtml = subHtml; // Use this for path detection
+            homeHtml = subHtml;
             break;
           }
         } catch { /* continue checking */ }
       }
+    }
+    
+    // Set detection state
+    if (isWordPress) {
+      wpDetection = 'detected';
+      wpDetectionDetails = detectedWpPath 
+        ? `WordPress detectado en subdirectorio: ${detectedWpPath}`
+        : 'WordPress detectado en la raíz del sitio';
+    } else if (wasBlocked) {
+      wpDetection = 'blocked';
+      if (!wpDetectionDetails) {
+        wpDetectionDetails = 'No se pudo determinar si es WordPress — el sitio está protegido por WAF/captcha';
+      }
+    } else {
+      wpDetection = 'not_detected';
+      wpDetectionDetails = 'No se encontraron indicadores de WordPress en el sitio';
     }
     
   } catch {
@@ -488,6 +549,9 @@ export async function auditWordPress(
     url: baseUrl,
     timestamp: new Date(),
     isWordPress,
+    wpDetection,
+    wpDetectionDetails,
+    detectedWpPath: detectedWpPath || undefined,
     securityHeaders: headersResult.headers,
     endpoints,
     userEnumeration,

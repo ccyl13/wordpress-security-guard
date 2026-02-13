@@ -14,7 +14,7 @@ import { OverallCvssCard } from '@/components/SecurityReferenceBadges';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
 import type { AuditResult } from '@/types/wordpress-audit';
-import { Shield, Terminal, AlertTriangle, Github } from 'lucide-react';
+import { Shield, Terminal, AlertTriangle, ShieldOff, Github } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const Index = () => {
@@ -126,12 +126,32 @@ const Index = () => {
               <ExportButton result={result} />
             </div>
 
-            {/* WordPress Detection Warning */}
-            {!result.isWordPress && (
+            {/* WordPress Detection Status */}
+            {result.wpDetection === 'not_detected' && (
               <Alert className="mb-8 max-w-xl mx-auto border-destructive/30 bg-destructive/10">
                 <AlertTriangle className="w-4 h-4 text-destructive" />
                 <AlertDescription className="text-destructive">
                   Este sitio no parece ser WordPress. Los resultados pueden ser limitados.
+                </AlertDescription>
+              </Alert>
+            )}
+            {result.wpDetection === 'blocked' && (
+              <Alert className="mb-8 max-w-xl mx-auto border-yellow-500/30 bg-yellow-500/10">
+                <ShieldOff className="w-4 h-4 text-yellow-500" />
+                <AlertDescription className="text-yellow-400">
+                  <strong>No se pudo verificar si es WordPress.</strong> {result.wpDetectionDetails}
+                  <br />
+                  <span className="text-xs text-muted-foreground mt-1 block">
+                    El sitio puede estar protegido por WAF, captcha o bloqueo anti-bot. Los resultados del análisis pueden estar incompletos.
+                  </span>
+                </AlertDescription>
+              </Alert>
+            )}
+            {result.wpDetection === 'detected' && result.detectedWpPath && (
+              <Alert className="mb-8 max-w-xl mx-auto border-primary/30 bg-primary/10">
+                <Shield className="w-4 h-4 text-primary" />
+                <AlertDescription className="text-primary">
+                  WordPress detectado en subdirectorio: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-xs">{result.detectedWpPath}</code>
                 </AlertDescription>
               </Alert>
             )}

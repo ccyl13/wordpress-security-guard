@@ -65,10 +65,14 @@ export interface EndpointCheck {
   reference?: SecurityReference;
 }
 
+export type UserEnumerationStatus = 'found' | 'not_found' | 'protected';
+
 export interface UserEnumeration {
   found: boolean;
+  status: UserEnumerationStatus;
   users: Array<{ id: number; name: string; slug: string }>;
   method: string;
+  protectionDetails?: string;
   reference?: SecurityReference;
 }
 
@@ -88,10 +92,15 @@ export interface SslInfo {
   protocol?: string;
 }
 
+export type WordPressDetection = 'detected' | 'not_detected' | 'blocked';
+
 export interface AuditResult {
   url: string;
   timestamp: Date;
   isWordPress: boolean;
+  wpDetection: WordPressDetection;
+  wpDetectionDetails?: string;
+  detectedWpPath?: string;
   securityHeaders: SecurityHeader[];
   endpoints: EndpointCheck[];
   userEnumeration: UserEnumeration;
