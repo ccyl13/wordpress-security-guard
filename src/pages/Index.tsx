@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { AuditForm } from '@/components/AuditForm';
-import { ScoreGauge } from '@/components/ScoreGauge';
 import { SecurityHeadersCard } from '@/components/SecurityHeadersCard';
 import { EndpointsCard } from '@/components/EndpointsCard';
 import { UserEnumerationCard } from '@/components/UserEnumerationCard';
@@ -10,12 +9,12 @@ import { AuditLoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ExportButton } from '@/components/ExportButton';
 import { AuditHistory } from '@/components/AuditHistory';
-import { OverallCvssCard } from '@/components/SecurityReferenceBadges';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
 import type { AuditResult } from '@/types/wordpress-audit';
-import { Shield, Terminal, AlertTriangle, ShieldOff, Github } from 'lucide-react';
+import { Terminal, AlertTriangle, ShieldOff, Shield, MessageCircle, Mail } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import jiratekLogo from '@/assets/logo-jiratek.jpg';
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -52,12 +51,10 @@ const Index = () => {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg animate-pulse-glow">
-              <Shield className="w-6 h-6 text-primary" />
-            </div>
+            <img src={jiratekLogo} alt="JIRATEK" className="w-10 h-10 rounded-lg" />
             <div>
-              <h1 className="text-xl font-bold tracking-tight">WP Security Auditor</h1>
-              <p className="text-xs text-muted-foreground">Análisis de seguridad para WordPress</p>
+              <h1 className="text-xl font-bold tracking-tight">JIRATEK</h1>
+              <p className="text-xs text-muted-foreground">Ciberseguridad</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -67,12 +64,20 @@ const Index = () => {
               onClear={clearHistory}
             />
             <a 
-              href="https://github.com/ccyl13" 
+              href="https://wa.me/34644254179" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className="p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+              title="WhatsApp"
             >
-              <Github className="w-5 h-5" />
+              <MessageCircle className="w-5 h-5" />
+            </a>
+            <a 
+              href="mailto:hola@jiratek.com" 
+              className="p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+              title="Email"
+            >
+              <Mail className="w-5 h-5" />
             </a>
           </div>
         </div>
@@ -90,8 +95,8 @@ const Index = () => {
             <span className="text-primary">cualquier WordPress</span>
           </h2>
           <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in">
-            Analiza cabeceras de seguridad, endpoints sensibles, enumeración de usuarios y más. 
-            Todo desde tu navegador, sin necesidad de servidor.
+            Analiza cabeceras de seguridad, endpoints sensibles, enumeración de usuarios y más.
+            Herramienta de <strong className="text-primary">JIRATEK Ciberseguridad</strong>.
           </p>
           
           <AuditForm onSubmit={handleAudit} isLoading={isLoading} />
@@ -156,13 +161,7 @@ const Index = () => {
               </Alert>
             )}
 
-            {/* Score and CVSS */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-8 mb-12">
-              <ScoreGauge score={result.overallScore} />
-              {result.cvssOverall && (
-                <OverallCvssCard cvss={result.cvssOverall} />
-              )}
-            </div>
+            
 
             {/* Results Grid */}
             <div className="grid md:grid-cols-2 gap-6">
@@ -189,10 +188,18 @@ const Index = () => {
       <footer className="border-t border-border py-6">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>
-            WP Security Auditor • Herramienta de código abierto para auditorías de seguridad WordPress
+            JIRATEK Ciberseguridad • Auditoría de seguridad WordPress
+          </p>
+          <p className="mt-2 flex items-center justify-center gap-4">
+            <a href="https://wa.me/34644254179" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+              <MessageCircle className="w-4 h-4" /> WhatsApp
+            </a>
+            <a href="mailto:hola@jiratek.com" className="text-primary hover:underline inline-flex items-center gap-1">
+              <Mail className="w-4 h-4" /> hola@jiratek.com
+            </a>
           </p>
           <p className="mt-1 text-xs">
-            Usa proxies CORS públicos. Solo para sitios de tu propiedad o con autorización.
+            Solo para sitios de tu propiedad o con autorización.
           </p>
         </div>
       </footer>
