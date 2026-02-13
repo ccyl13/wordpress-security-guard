@@ -44,34 +44,32 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {endpoints.map((endpoint) => (
-          <div
-            key={endpoint.url}
-            className={cn(
-              "flex flex-col p-3 rounded-lg border transition-colors",
-              endpoint.status === 'accessible' 
-                ? 'bg-red-500/5 border-red-500/20' 
-                : 'bg-green-500/5 border-green-500/20'
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {endpoint.status === 'accessible' ? (
+        {accessibleEndpoints.length === 0 ? (
+          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
+            <p className="text-green-400 font-medium">✓ Ningún endpoint sensible expuesto</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Se verificaron {endpoints.length} endpoints y todos están bloqueados o no accesibles
+            </p>
+          </div>
+        ) : (
+          accessibleEndpoints.map((endpoint) => (
+            <div
+              key={endpoint.url}
+              className="flex flex-col p-3 rounded-lg border transition-colors bg-red-500/5 border-red-500/20"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
                   <AlertTriangle className="w-5 h-5 text-red-400" />
-                ) : (
-                  <Check className="w-5 h-5 text-green-400" />
-                )}
-                <div>
-                  <span className="font-semibold text-sm">{endpoint.name}</span>
-                  <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+                  <div>
+                    <span className="font-semibold text-sm">{endpoint.name}</span>
+                    <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {getRiskBadge(endpoint.risk, endpoint.status === 'accessible')}
-                {endpoint.statusCode > 0 && (
-                  <code className="text-xs text-muted-foreground">{endpoint.statusCode}</code>
-                )}
-                {endpoint.status === 'accessible' && (
+                <div className="flex items-center gap-2">
+                  {getRiskBadge(endpoint.risk, true)}
+                  {endpoint.statusCode > 0 && (
+                    <code className="text-xs text-muted-foreground">{endpoint.statusCode}</code>
+                  )}
                   <a 
                     href={endpoint.url} 
                     target="_blank" 
@@ -80,16 +78,23 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
                   >
                     <ExternalLink className="w-4 h-4" />
                   </a>
-                )}
+                </div>
               </div>
+              {endpoint.reference && (
+                <div className="ml-8">
+                  <SecurityReferenceBadges reference={endpoint.reference} compact />
+                </div>
+              )}
             </div>
-            {endpoint.status === 'accessible' && endpoint.reference && (
-              <div className="ml-8">
-                <SecurityReferenceBadges reference={endpoint.reference} compact />
-              </div>
-            )}
-          </div>
-        ))}
+          ))
+        )}
+        
+        {blockedEndpoints.length > 0 && (
+          <p className="text-xs text-muted-foreground text-center pt-2">
+            <Check className="w-3 h-3 inline mr-1" />
+            {blockedEndpoints.length} endpoints verificados y no accesibles
+          </p>
+        )}
       </CardContent>
     </Card>
   );

@@ -112,9 +112,58 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<Resp
 
 export async function checkEndpointExists(url: string): Promise<{ exists: boolean; statusCode: number }> {
   try {
-    const response = await fetchWithProxy(url);
+    const response = await fetchWithProxy(url, false);
+    const text = await response.text();
+    const lowerText = text.toLowerCase();
+    
+    // CORS proxies often return 200 even for 404 pages - we need content validation
+    // Check for common "not found" / error indicators in the response body
+    const is404Page = 
+      lowerText.includes('<title>404') ||
+      lowerText.includes('not found') ||
+      lowerText.includes('page not found') ||
+      lowerText.includes('página no encontrada') ||
+      lowerText.includes('error 404') ||
+      lowerText.includes('nothing found') ||
+      lowerText.includes('doesn\'t exist');
+    
+    // Check for redirect to login (wp-admin redirects to wp-login when not authenticated)
+    const isLoginRedirect = 
+      lowerText.includes('wp-login.php') && url.includes('wp-admin');
+    
+    // For sensitive files (.env, .sql, .bak, .git, etc.), verify content matches expected type
+    const isSensitiveFile = /\.(env|sql|bak|log|git|htaccess)/.test(url) || url.endsWith('~');
+    if (isSensitiveFile) {
+      // These files should NOT return HTML - if they do, it's a 404/error page
+      const looksLikeHtml = lowerText.includes('<!doctype') || lowerText.includes('<html');
+      if (looksLikeHtml) {
+        return { exists: false, statusCode: 404 };
+      }
+      // Very short responses for these files are suspicious too (proxy error pages)
+      if (text.length < 10) {
+        return { exists: false, statusCode: 0 };
+      }
+    }
+    
+    // For phpinfo.php, verify it actually contains PHP info
+    if (url.includes('phpinfo.php')) {
+      const hasPhpInfo = lowerText.includes('php version') || lowerText.includes('phpinfo()');
+      if (!hasPhpInfo) {
+        return { exists: false, statusCode: 404 };
+      }
+    }
+    
+    if (is404Page) {
+      return { exists: false, statusCode: 404 };
+    }
+    
+    // wp-admin with login redirect means it exists but is protected (that's normal)
+    if (isLoginRedirect) {
+      return { exists: true, statusCode: response.status };
+    }
+    
     return {
-      exists: response.ok || response.status === 403 || response.status === 401,
+      exists: response.ok && !is404Page,
       statusCode: response.status,
     };
   } catch {
