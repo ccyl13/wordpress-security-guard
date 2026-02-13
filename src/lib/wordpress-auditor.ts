@@ -342,7 +342,6 @@ async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPres
 
 function calculateOverallScore(result: Partial<AuditResult>): number {
   let score = 100;
-  let issuesFound = 0;
   
   const criticalHeaders = ['Content-Security-Policy', 'X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options'];
   
@@ -351,10 +350,8 @@ function calculateOverallScore(result: Partial<AuditResult>): number {
     if (header.status === 'vulnerable') {
       const deduction = criticalHeaders.includes(header.name) ? 8 : 4;
       score -= deduction;
-      issuesFound++;
     } else if (header.status === 'warning') {
       score -= 2;
-      issuesFound++;
     }
   }
   
@@ -363,31 +360,17 @@ function calculateOverallScore(result: Partial<AuditResult>): number {
     if (endpoint.status === 'accessible') {
       const deductions = { critical: 12, high: 8, medium: 4, low: 2, info: 0 };
       score -= deductions[endpoint.risk] || 0;
-      if (endpoint.risk !== 'info') issuesFound++;
     }
   }
   
   // User enumeration (major issue)
   if (result.userEnumeration?.found) {
     score -= 12;
-    issuesFound++;
   }
   
   // Version disclosure
   if (result.wordpressInfo?.generator) {
     score -= 4;
-    issuesFound++;
-  }
-  
-  // Ensure minimum score of 10 if there are issues but site loaded
-  const hasValidData = (result.securityHeaders?.length || 0) > 0 || (result.endpoints?.length || 0) > 0;
-  if (hasValidData && score < 10) {
-    score = 10;
-  }
-  
-  // If no issues found, it's a good score
-  if (issuesFound === 0 && hasValidData) {
-    score = 95;
   }
   
   return Math.max(0, Math.min(100, Math.round(score)));
