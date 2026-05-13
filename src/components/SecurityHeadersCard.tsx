@@ -1,42 +1,44 @@
 import type { SecurityHeader } from '@/types/wordpress-audit';
-import { ShieldCheck, ShieldAlert, AlertTriangle, Shield } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
 
-const ST: Record<string,{color:string;dot:string;label:string}> = {
-  secure:     { color:'#34d399', dot:'dot-green',  label:'OK'   },
-  warning:    { color:'#fbbf24', dot:'dot-yellow', label:'Warn' },
-  vulnerable: { color:'#f87171', dot:'dot-red',    label:'Fail' },
-  info:       { color:'#60a5fa', dot:'dot-blue',   label:'Info' },
+const ST: Record<string,{icon:any;dot:string;pill:string;label:string}> = {
+  secure:     {icon:CheckCircle2, dot:'dot-green',  pill:'pill-green',  label:'OK'},
+  warning:    {icon:AlertTriangle,dot:'dot-yellow', pill:'pill-yellow', label:'WARN'},
+  vulnerable: {icon:XCircle,     dot:'dot-red',    pill:'pill-red',    label:'FAIL'},
+  info:       {icon:ShieldCheck, dot:'dot-blue',   pill:'pill-blue',   label:'INFO'},
 };
 
-export function SecurityHeadersCard({ headers }: { headers: SecurityHeader[] }) {
-  const ok   = headers.filter(h=>h.status==='secure').length;
-  const warn = headers.filter(h=>h.status==='warning').length;
-  const fail = headers.filter(h=>h.status==='vulnerable').length;
-  return (
+export function SecurityHeadersCard({headers}:{headers:SecurityHeader[]}){
+  const counts={ok:headers.filter(h=>h.status==='secure').length,warn:headers.filter(h=>h.status==='warning').length,fail:headers.filter(h=>h.status==='vulnerable').length};
+  return(
     <div className="result-card">
       <div className="card-header">
-        <span className="card-title"><Shield size={14} style={{color:'#a78bfa'}}/> Cabeceras HTTP</span>
-        <div style={{display:'flex',gap:'10px'}}>
-          <span className="mono" style={{fontSize:'10px',color:'#34d399'}}>{ok} ok</span>
-          <span className="mono" style={{fontSize:'10px',color:'#fbbf24'}}>{warn} warn</span>
-          <span className="mono" style={{fontSize:'10px',color:'#f87171'}}>{fail} fail</span>
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={15} className="text-violet-400"/>
+          <span className="text-sm font-bold">Cabeceras HTTP</span>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-[10px]">
+          <span className="text-emerald-400">{counts.ok} ok</span>
+          <span className="text-white/15">·</span>
+          <span className="text-amber-400">{counts.warn} warn</span>
+          <span className="text-white/15">·</span>
+          <span className="text-red-400">{counts.fail} fail</span>
         </div>
       </div>
-      <div>
+      <div className="divide-y divide-white/[0.04]">
         {headers.map(h=>{
-          const s = ST[h.status]||ST.info;
-          return (
-            <div key={h.name} style={{display:'flex',alignItems:'center',gap:'10px',padding:'9px 20px',borderBottom:'1px solid rgba(255,255,255,0.03)',transition:'background .15s'}}
-              onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.025)')}
-              onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
-              <div className={'dot '+s.dot} style={{flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
-                  <code style={{fontSize:'12px',fontFamily:'JetBrains Mono,monospace',color:'rgba(255,255,255,0.85)',fontWeight:500}}>{h.name}</code>
-                  <span style={{fontSize:'9px',padding:'1px 6px',borderRadius:'4px',background:s.color+'15',color:s.color,border:'1px solid '+s.color+'25',fontFamily:'JetBrains Mono,monospace',fontWeight:700,letterSpacing:'.5px'}}>{s.label}</span>
-                  {h.reference?.cvss&&<span style={{fontSize:'9px',color:'rgba(255,255,255,0.2)',fontFamily:'JetBrains Mono,monospace'}}>CVSS {h.reference.cvss.score.toFixed(1)}</span>}
+          const s=ST[h.status]||ST.info; const Icon=s.icon;
+          return(
+            <div key={h.name} className="flex items-start gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors">
+              <Icon size={14} className={'mt-0.5 shrink-0 '+(h.status==='secure'?'text-emerald-400':h.status==='warning'?'text-amber-400':h.status==='vulnerable'?'text-red-400':'text-blue-400')}/>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="text-[11px] font-mono font-semibold text-white/80">{h.name}</code>
+                  <span className={'pill '+s.pill}>{s.label}</span>
+                  {h.reference?.cvss&&<span className="font-mono text-[9px] text-white/25">CVSS {h.reference.cvss.score.toFixed(1)}</span>}
                 </div>
-                <div style={{fontSize:'11px',color:'rgba(255,255,255,0.3)',marginTop:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.description}</div>
+                <p className="text-[10px] text-white/35 mt-0.5 truncate">{h.description}</p>
+                {h.reference?.owasp&&<p className="font-mono text-[9px] text-white/15 mt-0.5">{h.reference.owasp}</p>}
               </div>
             </div>
           );
