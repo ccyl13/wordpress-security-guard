@@ -10,7 +10,6 @@ import { AuditLoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ExportButton } from '@/components/ExportButton';
 import { AuditHistory } from '@/components/AuditHistory';
-import { ScoreGauge } from '@/components/ScoreGauge';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
 import type { AuditResult } from '@/types/wordpress-audit';
@@ -34,10 +33,10 @@ const CHECKS = [
 ];
 
 const STATS = [
-  { n:'09',   l:'headers analizados', c:'text-violet-400' },
+  { n:'09',   l:'headers analizados',   c:'text-violet-400' },
   { n:'14',   l:'endpoints escaneados', c:'text-red-400' },
-  { n:'10.0', l:'CVSS score max', c:'text-emerald-400' },
-  { n:'~8s',  l:'tiempo medio', c:'text-amber-400' },
+  { n:'10.0', l:'CVSS score max',       c:'text-emerald-400' },
+  { n:'~8s',  l:'tiempo medio',         c:'text-amber-400' },
 ];
 
 export default function Index() {
@@ -61,16 +60,12 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-[#030308] text-white font-sans overflow-x-hidden">
 
-      {/* scanline */}
-      <div
-        className="pointer-events-none fixed inset-x-0 h-28 bg-gradient-to-b from-transparent via-violet-500/[0.04] to-transparent animate-scanline"
-        style={{ top: '-112px', zIndex: 50 }}
-      />
+      <div className="pointer-events-none fixed inset-x-0 h-28 bg-gradient-to-b from-transparent via-violet-500/[0.04] to-transparent animate-scanline"
+        style={{ top: '-112px', zIndex: 50 }} />
 
-      {/* ── HEADER ─────────────────────────────────────────── */}
+      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-white/[0.05] bg-[#030308]/85 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 h-14 flex items-center justify-between gap-4">
-          {/* logo */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="animate-float"><HexLogo /></div>
             <div>
@@ -80,8 +75,6 @@ export default function Index() {
               <div className="font-mono text-[8px] text-white/20 tracking-[2px] uppercase mt-0.5">security auditor</div>
             </div>
           </div>
-
-          {/* right nav */}
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-violet-500/20 bg-violet-500/5 shrink-0">
               <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse-dot" />
@@ -98,19 +91,14 @@ export default function Index() {
         </div>
       </header>
 
-      {/* ── HERO ───────────────────────────────────────────── */}
+      {/* HERO */}
       <section className="relative overflow-hidden min-h-[85vh] flex flex-col justify-center">
-
-        {/* glow blobs */}
         <div className="pointer-events-none absolute -top-60 -left-60 w-[700px] h-[700px] rounded-full opacity-50"
           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)' }} />
         <div className="pointer-events-none absolute top-40 -right-40 w-[500px] h-[500px] rounded-full opacity-30"
           style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%)' }} />
-
-        {/* grid */}
         <div className="pointer-events-none absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_70%_60%_at_30%_40%,black,transparent)]" />
 
-        {/* 3D SVG */}
         <svg className="pointer-events-none absolute top-0 right-0 w-80 h-80 lg:w-[420px] lg:h-[420px] opacity-[0.15] hidden md:block animate-float"
           viewBox="0 0 420 420" fill="none">
           <g transform="translate(120,40)">
@@ -125,9 +113,6 @@ export default function Index() {
           <g transform="translate(18,200)" opacity="0.55">
             <polygon points="28,0 56,14 56,42 28,56 0,42 0,14" stroke="#60a5fa" strokeWidth="0.6" fill="rgba(59,130,246,0.05)" />
           </g>
-          <g transform="translate(250,250)" opacity="0.45">
-            <polygon points="22,0 44,11 44,33 22,44 0,33 0,11" stroke="#a78bfa" strokeWidth="0.5" fill="rgba(139,92,246,0.04)" />
-          </g>
           <circle cx="55" cy="155" r="2" fill="#a78bfa" fillOpacity="0.6" />
           <circle cx="265" cy="72" r="1.5" fill="#60a5fa" fillOpacity="0.5" />
           <circle cx="298" cy="272" r="2" fill="#34d399" fillOpacity="0.4" />
@@ -136,8 +121,6 @@ export default function Index() {
         </svg>
 
         <div className="relative max-w-6xl mx-auto px-5 sm:px-8 py-20 sm:py-28 w-full">
-
-          {/* eyebrow */}
           <div className="animate-fade-up flex items-center gap-3 mb-8 flex-wrap">
             <div className="h-px w-6 bg-gradient-to-r from-violet-500 to-transparent shrink-0" />
             <span className="font-mono text-[9px] sm:text-[10px] text-violet-400/55 tracking-[2px] sm:tracking-[3px] uppercase">
@@ -145,33 +128,27 @@ export default function Index() {
             </span>
           </div>
 
-          {/* headline */}
-          <h1 className="animate-fade-up delay-100 font-extrabold leading-[0.9] tracking-[-3px] mb-6 max-w-3xl
-            text-[52px] sm:text-[68px] lg:text-[80px]">
+          <h1 className="animate-fade-up delay-100 font-extrabold leading-[0.9] tracking-[-3px] mb-6 max-w-3xl text-[52px] sm:text-[68px] lg:text-[80px]">
             Audita<br />
-            <span className="gradient-text">cualquier<br />WordPress</span><br />
+            <span className="gradient-text">cualquier WordPress</span><br />
             <span className="text-white/[0.08] text-[40px] sm:text-[52px] lg:text-[62px] tracking-[-2px]">en segundos</span>
           </h1>
 
-          {/* subtext */}
           <p className="animate-fade-up delay-200 text-sm sm:text-base text-white/40 leading-relaxed mb-10 max-w-lg font-light">
             Cabeceras HTTP, endpoints sensibles, enumeracion de usuarios y puntuacion CVSS 3.1.
             <strong className="text-white/70 font-semibold"> Sin instalar nada.</strong>
           </p>
 
-          {/* form */}
           <div className="animate-fade-up delay-300 max-w-xl">
             <AuditForm onSubmit={handleAudit} isLoading={isLoading} />
           </div>
 
-          {/* progress */}
           {isLoading && progress && (
             <div className="mt-6 max-w-xl animate-fade-in">
               <ProgressBar progress={progress} />
             </div>
           )}
 
-          {/* error */}
           {error && (
             <div className="mt-4 max-w-xl animate-fade-in">
               <Alert variant="destructive" className="bg-red-950/30 border-red-500/20">
@@ -180,7 +157,6 @@ export default function Index() {
             </div>
           )}
 
-          {/* stats chips */}
           <div className="animate-fade-up delay-400 mt-10 flex flex-wrap gap-3">
             {STATS.map((s, i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-full glass border border-white/[0.06]">
@@ -190,7 +166,6 @@ export default function Index() {
             ))}
           </div>
 
-          {/* scroll hint */}
           {!result && !isLoading && (
             <div className="animate-fade-up delay-500 mt-16 flex flex-col items-center gap-2 opacity-30">
               <span className="font-mono text-[9px] tracking-[3px] uppercase text-white/40">scroll</span>
@@ -200,15 +175,13 @@ export default function Index() {
         </div>
       </section>
 
-      {/* ── FEATURE SECTION ────────────────────────────────── */}
+      {/* FEATURES */}
       {!result && !isLoading && (
         <section className="max-w-6xl mx-auto px-5 sm:px-8 pb-24">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CHECKS.map(({ icon: Icon, label, desc, color }, i) => (
               <div key={i} className={'animate-fade-up result-card p-6 group cursor-default delay-' + ((i+1)*100)}>
-                <div className={'mb-4 transition-transform group-hover:scale-110 ' + color}>
-                  <Icon size={20} />
-                </div>
+                <div className={'mb-4 transition-transform group-hover:scale-110 ' + color}><Icon size={20} /></div>
                 <h3 className="font-bold text-sm mb-2 text-white/85">{label}</h3>
                 <p className="font-mono text-[10px] text-white/30 leading-relaxed">{desc}</p>
               </div>
@@ -217,14 +190,14 @@ export default function Index() {
         </section>
       )}
 
-      {/* ── LOADING ─────────────────────────────────────────── */}
+      {/* LOADING */}
       {isLoading && !result && (
         <div className="max-w-6xl mx-auto px-5 sm:px-8 pb-24 animate-fade-in">
           <AuditLoadingSkeleton />
         </div>
       )}
 
-      {/* ── RESULTS ─────────────────────────────────────────── */}
+      {/* RESULTS */}
       {result && (
         <section className="max-w-6xl mx-auto px-5 sm:px-8 pb-24 animate-fade-up">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 pt-2">
@@ -236,24 +209,27 @@ export default function Index() {
             <ExportButton result={result} />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-            <ScoreGauge score={result.overallScore} cvss={result.cvssOverall} />
-            <div className="lg:col-span-2">
-              <WordPressInfoCard info={result.wordpressInfo} isWordPress={result.isWordPress} wpDetection={result.wpDetection} />
-            </div>
+          {/* Info del sitio a todo ancho */}
+          <div className="mb-4">
+            <WordPressInfoCard info={result.wordpressInfo} isWordPress={result.isWordPress} wpDetection={result.wpDetection} />
           </div>
+
+          {/* Headers + Endpoints */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <SecurityHeadersCard headers={result.securityHeaders} />
             <EndpointsCard endpoints={result.endpoints} />
           </div>
+
+          {/* User enum */}
           <div className="mb-4">
             <UserEnumerationCard userEnumeration={result.userEnumeration} />
           </div>
+
           <Recommendations result={result} />
         </section>
       )}
 
-      {/* ── FOOTER ──────────────────────────────────────────── */}
+      {/* FOOTER */}
       <footer className="border-t border-white/[0.04] py-7 px-5 sm:px-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -262,13 +238,9 @@ export default function Index() {
           </div>
           <div className="flex items-center gap-5">
             <a href="https://github.com/ccyl13/" target="_blank" rel="noopener noreferrer"
-              className="font-mono text-[9px] text-white/20 hover:text-violet-400/60 transition-colors tracking-[0.5px]">
-              github/ccyl13
-            </a>
+              className="font-mono text-[9px] text-white/20 hover:text-violet-400/60 transition-colors tracking-[0.5px]">github/ccyl13</a>
             <a href="https://www.linkedin.com/in/thomasoneil%C3%A1lvarez/" target="_blank" rel="noopener noreferrer"
-              className="font-mono text-[9px] text-white/20 hover:text-violet-400/60 transition-colors tracking-[0.5px]">
-              Thomas Oneil Alvarez
-            </a>
+              className="font-mono text-[9px] text-white/20 hover:text-violet-400/60 transition-colors tracking-[0.5px]">Thomas Oneil Alvarez</a>
           </div>
         </div>
       </footer>
