@@ -1,119 +1,57 @@
 import type { AuditResult } from '@/types/wordpress-audit';
-import { AlertTriangle, CheckCircle2, ChevronRight, Lightbulb } from 'lucide-react';
+import { CheckCircle2, Lightbulb } from 'lucide-react';
 
-interface RecommendationsProps {
-  result: AuditResult;
-}
-
-interface Rec {
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  title: string;
-  detail: string;
-  code?: string;
-}
-
-const PRIORITY_CONFIG = {
-  critical: { label: 'Critico', color: 'text-red-400', bg: 'bg-red-950/20', border: 'border-red-400/30', dot: 'bg-red-400' },
-  high:     { label: 'Alto',    color: 'text-orange-400', bg: 'bg-orange-950/20', border: 'border-orange-400/30', dot: 'bg-orange-400' },
-  medium:   { label: 'Medio',   color: 'text-yellow-400', bg: 'bg-yellow-950/20', border: 'border-yellow-400/30', dot: 'bg-yellow-400' },
-  low:      { label: 'Bajo',    color: 'text-blue-400', bg: 'bg-blue-950/20', border: 'border-blue-400/30', dot: 'bg-blue-400' },
+interface Rec { priority:'critical'|'high'|'medium'|'low'; title:string; detail:string; code?:string; }
+const PRI = {
+  critical: { label:'Crítico', color:'#f87171', bg:'rgba(239,68,68,0.08)',  border:'rgba(239,68,68,0.2)',  dot:'#ef4444' },
+  high:     { label:'Alto',    color:'#fb923c', bg:'rgba(249,115,22,0.08)', border:'rgba(249,115,22,0.2)', dot:'#f97316' },
+  medium:   { label:'Medio',   color:'#fbbf24', bg:'rgba(234,179,8,0.08)',  border:'rgba(234,179,8,0.2)',  dot:'#eab308' },
+  low:      { label:'Bajo',    color:'#60a5fa', bg:'rgba(59,130,246,0.08)', border:'rgba(59,130,246,0.2)', dot:'#3b82f6' },
 };
 
 function buildRecs(result: AuditResult): Rec[] {
-  const recs: Rec[] = [];
-
-  // Endpoints
-  const xmlrpc = result.endpoints.find(e => e.url.includes('xmlrpc') && e.status === 'accessible');
-  if (xmlrpc) recs.push({
-    priority: 'critical', title: 'Deshabilitar XML-RPC',
-    detail: 'XML-RPC esta expuesto y puede usarse para ataques de fuerza bruta o DDoS. Desactivalo si no lo necesitas.',
-    code: 'add_filter("xmlrpc_enabled", "__return_false");'
-  });
-
-  const readme = result.endpoints.find(e => e.url.includes('readme') && e.status === 'accessible');
-  if (readme) recs.push({
-    priority: 'medium', title: 'Eliminar readme.html',
-    detail: 'El archivo readme.html revela la version de WordPress. Eliminalo del servidor.',
-    code: 'rm /var/www/html/readme.html'
-  });
-
-  // Headers
-  const missingCritical = result.securityHeaders.filter(h => h.status === 'vulnerable' && ['Content-Security-Policy','Strict-Transport-Security','X-Frame-Options','X-Content-Type-Options'].includes(h.name));
-  if (missingCritical.length > 0) recs.push({
-    priority: 'high', title: 'Configurar cabeceras de seguridad criticas',
-    detail: 'Faltan cabeceras esenciales: ' + missingCritical.map(h => h.name).join(', ') + '. Configuralas en tu servidor o .htaccess.',
-    code: 'Header always set X-Frame-Options "SAMEORIGIN"\nHeader always set X-Content-Type-Options "nosniff"\nHeader always set Strict-Transport-Security "max-age=31536000; includeSubDomains"'
-  });
-
-  // User enum
-  if (result.userEnumeration.found) recs.push({
-    priority: 'high', title: 'Proteger enumeracion de usuarios',
-    detail: 'Los nombres de usuario son accesibles publicamente. Instala un plugin de seguridad que bloquee la REST API o usa un plugin de proteccion de login.',
-    code: 'add_filter("rest_endpoints", function($e) { unset($e["/wp/v2/users"]); return $e; });'
-  });
-
-  // WP version exposed
-  if (result.wordpressInfo.version) recs.push({
-    priority: 'medium', title: 'Ocultar version de WordPress',
-    detail: 'La version ' + result.wordpressInfo.version + ' es visible publicamente. Eliminala del HTML y del feed RSS.',
-    code: 'remove_action("wp_head", "wp_generator");'
-  });
-
-  // Generator header
-  if (result.wordpressInfo.generator) recs.push({
-    priority: 'low', title: 'Eliminar cabecera Generator',
-    detail: 'La meta etiqueta Generator revela que el sitio usa WordPress. Eliminala desde functions.php.'
-  });
-
-  return recs.sort((a, b) => {
-    const order = { critical: 0, high: 1, medium: 2, low: 3 };
-    return order[a.priority] - order[b.priority];
-  });
+  const r: Rec[] = [];
+  if (result.endpoints.find(e=>e.url.includes('xmlrpc')&&e.status==='accessible'))
+    r.push({priority:'critical',title:'Deshabilitar XML-RPC',detail:'XML-RPC está expuesto y puede usarse para ataques de fuerza bruta y DDoS amplificados.',code:"add_filter('xmlrpc_enabled', '__return_false');"});
+  if (result.endpoints.find(e=>e.url.includes('readme')&&e.status==='accessible'))
+    r.push({priority:'medium',title:'Eliminar readme.html',detail:'El archivo readme.html revela la versión de WordPress facilitando ataques dirigidos.',code:'rm /var/www/html/readme.html'});
+  const missing=result.securityHeaders.filter(h=>h.status==='vulnerable'&&['Content-Security-Policy','Strict-Transport-Security','X-Frame-Options','X-Content-Type-Options'].includes(h.name));
+  if (missing.length>0)
+    r.push({priority:'high',title:'Configurar cabeceras de seguridad críticas',detail:'Faltan: '+missing.map(h=>h.name).join(', ')+'.',code:'Header always set X-Frame-Options "SAMEORIGIN"\nHeader always set X-Content-Type-Options "nosniff"\nHeader always set Strict-Transport-Security "max-age=31536000"'});
+  if (result.userEnumeration.found)
+    r.push({priority:'high',title:'Proteger enumeración de usuarios',detail:'Los usuarios son accesibles públicamente a través de la REST API.',code:"add_filter('rest_endpoints',function($e){unset($e['/wp/v2/users']);return $e;});"});
+  if (result.wordpressInfo.version)
+    r.push({priority:'medium',title:'Ocultar versión de WordPress',detail:'La versión '+result.wordpressInfo.version+' es visible públicamente.',code:"remove_action('wp_head','wp_generator');"});
+  return r.sort((a,b)=>(['critical','high','medium','low'].indexOf(a.priority))-(['critical','high','medium','low'].indexOf(b.priority)));
 }
 
-export function Recommendations({ result }: RecommendationsProps) {
+export function Recommendations({ result }: { result: AuditResult }) {
   const recs = buildRecs(result);
-
-  if (recs.length === 0) {
-    return (
-      <div className="rounded-xl bg-card border border-emerald-400/20 p-6 flex items-center gap-4">
-        <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
-        <div>
-          <p className="font-semibold text-emerald-400">Sin recomendaciones criticas</p>
-          <p className="text-sm text-muted-foreground mt-0.5">El sitio supera los controles de seguridad basicos.</p>
-        </div>
-      </div>
-    );
-  }
-
+  if (!recs.length) return (
+    <div className="result-card" style={{padding:'24px',display:'flex',alignItems:'center',gap:'14px',borderColor:'rgba(16,185,129,0.2)'}}>
+      <CheckCircle2 size={22} style={{color:'#34d399',flexShrink:0}}/>
+      <div><div style={{fontWeight:600,color:'#34d399',marginBottom:'2px'}}>Sin recomendaciones críticas</div><div style={{fontSize:'13px',color:'rgba(255,255,255,0.35)'}}>El sitio supera los controles de seguridad básicos.</div></div>
+    </div>
+  );
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm">Recomendaciones</h3>
-        </div>
-        <span className="text-xs font-mono text-muted-foreground">{recs.length} hallazgo{recs.length !== 1 ? 's' : ''}</span>
+    <div className="result-card">
+      <div className="card-header">
+        <span className="card-title"><Lightbulb size={14} style={{color:'#fbbf24'}}/> Recomendaciones</span>
+        <span className="mono" style={{fontSize:'10px',color:'rgba(255,255,255,0.3)'}}>{recs.length} hallazgo{recs.length!==1?'s':''}</span>
       </div>
-      <div className="divide-y divide-border">
-        {recs.map((rec, i) => {
-          const cfg = PRIORITY_CONFIG[rec.priority];
+      <div>
+        {recs.map((rec,i)=>{
+          const p=PRI[rec.priority];
           return (
-            <div key={i} className="px-5 py-4 hover:bg-secondary/20 transition-colors">
-              <div className="flex items-start gap-3">
-                <div className={"w-2 h-2 rounded-full mt-2 shrink-0 " + cfg.dot} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <p className="font-semibold text-sm">{rec.title}</p>
-                    <span className={"text-xs px-2 py-0.5 rounded border font-mono " + cfg.color + " " + cfg.bg + " " + cfg.border}>
-                      {cfg.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
-                  {rec.code && (
-                    <pre className="mt-2 text-xs font-mono bg-secondary/80 border border-border rounded-lg px-3 py-2 overflow-x-auto text-emerald-300 whitespace-pre-wrap">{rec.code}</pre>
-                  )}
+            <div key={i} style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,0.03)',display:'flex',gap:'14px',alignItems:'flex-start'}}>
+              <div style={{width:'6px',height:'6px',borderRadius:'50%',background:p.dot,boxShadow:'0 0 8px '+p.dot+'80',flexShrink:0,marginTop:'6px'}}/>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',flexWrap:'wrap'}}>
+                  <span style={{fontSize:'14px',fontWeight:600,color:'rgba(255,255,255,0.85)'}}>{rec.title}</span>
+                  <span style={{fontSize:'9px',padding:'2px 8px',borderRadius:'99px',background:p.bg,color:p.color,border:'1px solid '+p.border,fontWeight:700,letterSpacing:'.5px'}}>{p.label}</span>
                 </div>
+                <p style={{fontSize:'12px',color:'rgba(255,255,255,0.4)',lineHeight:1.7,marginBottom:rec.code?'10px':'0'}}>{rec.detail}</p>
+                {rec.code&&<pre style={{fontSize:'11px',fontFamily:'JetBrains Mono,monospace',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:'8px',padding:'12px 14px',color:'#a78bfa',overflowX:'auto',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{rec.code}</pre>}
               </div>
             </div>
           );
