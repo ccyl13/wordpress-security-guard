@@ -3,55 +3,66 @@ import { CheckCircle2, Lightbulb } from 'lucide-react';
 
 interface Rec { priority:'critical'|'high'|'medium'|'low'; title:string; detail:string; code?:string; }
 const PRI = {
-  critical: { label:'Crítico', color:'#f87171', bg:'rgba(239,68,68,0.08)',  border:'rgba(239,68,68,0.2)',  dot:'#ef4444' },
-  high:     { label:'Alto',    color:'#fb923c', bg:'rgba(249,115,22,0.08)', border:'rgba(249,115,22,0.2)', dot:'#f97316' },
-  medium:   { label:'Medio',   color:'#fbbf24', bg:'rgba(234,179,8,0.08)',  border:'rgba(234,179,8,0.2)',  dot:'#eab308' },
-  low:      { label:'Bajo',    color:'#60a5fa', bg:'rgba(59,130,246,0.08)', border:'rgba(59,130,246,0.2)', dot:'#3b82f6' },
+  critical:{ dot:'bg-red-400',    pill:'bg-red-400/10 text-red-400 border-red-400/25',    label:'Crítico' },
+  high:    { dot:'bg-orange-400', pill:'bg-orange-400/10 text-orange-400 border-orange-400/25', label:'Alto' },
+  medium:  { dot:'bg-amber-400',  pill:'bg-amber-400/10 text-amber-400 border-amber-400/25',   label:'Medio' },
+  low:     { dot:'bg-blue-400',   pill:'bg-blue-400/10 text-blue-400 border-blue-400/25',       label:'Bajo' },
 };
-
-function buildRecs(result: AuditResult): Rec[] {
-  const r: Rec[] = [];
-  if (result.endpoints.find(e=>e.url.includes('xmlrpc')&&e.status==='accessible'))
-    r.push({priority:'critical',title:'Deshabilitar XML-RPC',detail:'XML-RPC está expuesto y puede usarse para ataques de fuerza bruta y DDoS amplificados.',code:"add_filter('xmlrpc_enabled', '__return_false');"});
-  if (result.endpoints.find(e=>e.url.includes('readme')&&e.status==='accessible'))
-    r.push({priority:'medium',title:'Eliminar readme.html',detail:'El archivo readme.html revela la versión de WordPress facilitando ataques dirigidos.',code:'rm /var/www/html/readme.html'});
-  const missing=result.securityHeaders.filter(h=>h.status==='vulnerable'&&['Content-Security-Policy','Strict-Transport-Security','X-Frame-Options','X-Content-Type-Options'].includes(h.name));
-  if (missing.length>0)
-    r.push({priority:'high',title:'Configurar cabeceras de seguridad críticas',detail:'Faltan: '+missing.map(h=>h.name).join(', ')+'.',code:'Header always set X-Frame-Options "SAMEORIGIN"\nHeader always set X-Content-Type-Options "nosniff"\nHeader always set Strict-Transport-Security "max-age=31536000"'});
-  if (result.userEnumeration.found)
-    r.push({priority:'high',title:'Proteger enumeración de usuarios',detail:'Los usuarios son accesibles públicamente a través de la REST API.',code:"add_filter('rest_endpoints',function($e){unset($e['/wp/v2/users']);return $e;});"});
-  if (result.wordpressInfo.version)
-    r.push({priority:'medium',title:'Ocultar versión de WordPress',detail:'La versión '+result.wordpressInfo.version+' es visible públicamente.',code:"remove_action('wp_head','wp_generator');"});
-  return r.sort((a,b)=>(['critical','high','medium','low'].indexOf(a.priority))-(['critical','high','medium','low'].indexOf(b.priority)));
+function buildRecs(r: AuditResult): Rec[] {
+  const recs: Rec[] = [];
+  if (r.endpoints.find(e=>e.url.includes('xmlrpc')&&e.status==='accessible'))
+    recs.push({ priority:'critical', title:'Deshabilitar XML-RPC', detail:'Puede usarse para ataques de fuerza bruta y DDoS amplificados.', code:"add_filter('xmlrpc_enabled', '__return_false');" });
+  if (r.endpoints.find(e=>e.url.includes('readme')&&e.status==='accessible'))
+    recs.push({ priority:'medium', title:'Eliminar readme.html', detail:'Revela la versión de WordPress al atacante.', code:'rm /var/www/html/readme.html' });
+  const missing = r.securityHeaders.filter(h=>h.status==='vulnerable'&&['Content-Security-Policy','Strict-Transport-Security','X-Frame-Options','X-Content-Type-Options'].includes(h.name));
+  if (missing.length)
+    recs.push({ priority:'high', title:'Configurar cabeceras de seguridad', detail:'Faltan: '+missing.map(h=>h.name).join(', '), code:'Header always set X-Frame-Options "SAMEORIGIN"\nHeader always set X-Content-Type-Options "nosniff"' });
+  if (r.userEnumeration.found)
+    recs.push({ priority:'high', title:'Proteger enumeración de usuarios', detail:'Los nombres de usuario son accesibles públicamente via REST API.', code:"add_filter('rest_endpoints',function($e){unset($e['/wp/v2/users']);return $e;});" });
+  if (r.wordpressInfo.version)
+    recs.push({ priority:'medium', title:'Ocultar versión de WordPress', detail:'La versión '+r.wordpressInfo.version+' es visible públicamente.', code:"remove_action('wp_head','wp_generator');" });
+  if (r.wordpressInfo.generator)
+    recs.push({ priority:'low', title:'Eliminar cabecera Generator', detail:'Revela que el sitio usa WordPress. Elimínala desde functions.php.' });
+  return recs.sort((a,b)=>({critical:0,high:1,medium:2,low:3}[a.priority]-{critical:0,high:1,medium:2,low:3}[b.priority]));
 }
 
-export function Recommendations({ result }: { result: AuditResult }) {
+export function Recommendations({ result }: { result:AuditResult }) {
   const recs = buildRecs(result);
   if (!recs.length) return (
-    <div className="result-card" style={{padding:'24px',display:'flex',alignItems:'center',gap:'14px',borderColor:'rgba(16,185,129,0.2)'}}>
-      <CheckCircle2 size={22} style={{color:'#34d399',flexShrink:0}}/>
-      <div><div style={{fontWeight:600,color:'#34d399',marginBottom:'2px'}}>Sin recomendaciones críticas</div><div style={{fontSize:'13px',color:'rgba(255,255,255,0.35)'}}>El sitio supera los controles de seguridad básicos.</div></div>
+    <div className="glass rounded-2xl p-6 flex items-center gap-4 border-emerald-500/15">
+      <CheckCircle2 size={22} className="text-emerald-400 shrink-0"/>
+      <div>
+        <p className="font-bold text-emerald-400">Sin recomendaciones críticas</p>
+        <p className="text-sm text-white/40 mt-0.5">El sitio supera los controles básicos de seguridad.</p>
+      </div>
     </div>
   );
   return (
-    <div className="result-card">
-      <div className="card-header">
-        <span className="card-title"><Lightbulb size={14} style={{color:'#fbbf24'}}/> Recomendaciones</span>
-        <span className="mono" style={{fontSize:'10px',color:'rgba(255,255,255,0.3)'}}>{recs.length} hallazgo{recs.length!==1?'s':''}</span>
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Lightbulb size={15} className="text-purple"/>
+          <span className="font-bold text-sm">Recomendaciones</span>
+        </div>
+        <span className="mono text-[10px] text-white/30">{recs.length} hallazgo{recs.length!==1?'s':''}</span>
       </div>
-      <div>
-        {recs.map((rec,i)=>{
-          const p=PRI[rec.priority];
+      <div className="divide-y divide-white/[0.04]">
+        {recs.map((rec,i) => {
+          const p = PRI[rec.priority];
           return (
-            <div key={i} style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,0.03)',display:'flex',gap:'14px',alignItems:'flex-start'}}>
-              <div style={{width:'6px',height:'6px',borderRadius:'50%',background:p.dot,boxShadow:'0 0 8px '+p.dot+'80',flexShrink:0,marginTop:'6px'}}/>
-              <div style={{flex:1}}>
-                <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',flexWrap:'wrap'}}>
-                  <span style={{fontSize:'14px',fontWeight:600,color:'rgba(255,255,255,0.85)'}}>{rec.title}</span>
-                  <span style={{fontSize:'9px',padding:'2px 8px',borderRadius:'99px',background:p.bg,color:p.color,border:'1px solid '+p.border,fontWeight:700,letterSpacing:'.5px'}}>{p.label}</span>
+            <div key={i} className="px-5 py-4 hover:bg-white/[0.02] transition-colors">
+              <div className="flex items-start gap-3">
+                <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${p.dot}`}/>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <p className="font-bold text-sm">{rec.title}</p>
+                    <span className={`mono text-[8px] px-2 py-0.5 rounded-full border font-bold tracking-wide ${p.pill}`}>{p.label}</span>
+                  </div>
+                  <p className="text-[11px] text-white/40 leading-relaxed">{rec.detail}</p>
+                  {rec.code && (
+                    <pre className="mt-2 mono text-[10px] bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-2.5 overflow-x-auto text-emerald-300 whitespace-pre-wrap leading-relaxed">{rec.code}</pre>
+                  )}
                 </div>
-                <p style={{fontSize:'12px',color:'rgba(255,255,255,0.4)',lineHeight:1.7,marginBottom:rec.code?'10px':'0'}}>{rec.detail}</p>
-                {rec.code&&<pre style={{fontSize:'11px',fontFamily:'JetBrains Mono,monospace',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:'8px',padding:'12px 14px',color:'#a78bfa',overflowX:'auto',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{rec.code}</pre>}
               </div>
             </div>
           );
