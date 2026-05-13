@@ -1,26 +1,24 @@
 import type { AuditProgress } from '@/lib/wordpress-auditor';
 
-export function ProgressBar({ progress }: { progress:AuditProgress }) {
+export function ProgressBar({ progress }: { progress: AuditProgress }) {
   return (
-    <div className="glass rounded-2xl p-5 mono">
-      <div className="flex items-center gap-2 mb-4 text-purple text-[10px] tracking-[2px] uppercase">
-        <span className="animate-glow">▶</span> wpsentry scan
-      </div>
-      <div className="flex justify-between text-[10px] text-white/40 mb-2">
-        <span>{progress.step}</span>
-        <span className="text-purple font-bold">{progress.percentage}%</span>
-      </div>
-      <div className="h-1 bg-white/[0.06] rounded-full overflow-visible relative">
-        <div className="h-full rounded-full transition-all duration-500 ease-out relative"
-          style={{ width:progress.percentage+'%', background:'linear-gradient(90deg,#6d28d9,#8b5cf6)' }}>
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-purple shadow-glow-sm -translate-x-1/2"/>
+    <div className="rounded-2xl p-5" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-purple-400" style={{ animation: 'blink 1s ease-in-out infinite', boxShadow: '0 0 6px #a78bfa' }}/>
+          <span className="mono text-white/40 tracking-widest uppercase" style={{ fontSize: 9 }}>wpsentry scan</span>
         </div>
+        <span className="mono font-bold" style={{ fontSize: 11, color: '#a78bfa' }}>{progress.percentage}%</span>
+      </div>
+      <p className="mono text-white/30 mb-3" style={{ fontSize: 10 }}>{progress.step}</p>
+      <div className="scan-bar-track">
+        <div className="scan-bar-fill" style={{ width: progress.percentage + '%' }}/>
       </div>
       <div className="flex justify-between mt-3">
-        {Array.from({length:progress.total},(_,i)=>(
-          <div key={i} className={`text-[9px] tracking-wide ${i<progress.current?'text-purple':'text-white/15'}`}>
-            {i<progress.current?'[OK]':'[··]'}
-          </div>
+        {Array.from({ length: progress.total }, (_, i) => (
+          <span key={i} className="mono" style={{ fontSize: 9, color: i < progress.current ? '#a78bfa' : 'rgba(255,255,255,0.1)' }}>
+            {i < progress.current ? '[OK]' : '[··]'}
+          </span>
         ))}
       </div>
     </div>
