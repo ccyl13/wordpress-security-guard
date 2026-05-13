@@ -1,58 +1,38 @@
 import type { UserEnumeration } from '@/types/wordpress-audit';
-import { Users, ShieldAlert, ShieldCheck, User } from 'lucide-react';
+import { Users, User } from 'lucide-react';
 
-interface UserEnumerationCardProps {
-  userEnumeration: UserEnumeration;
-}
-
-export function UserEnumerationCard({ userEnumeration }: UserEnumerationCardProps) {
+export function UserEnumerationCard({ userEnumeration }: { userEnumeration: UserEnumeration }) {
   const { found, status, users, method, protectionDetails, reference } = userEnumeration;
-
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm">Enumeracion de usuarios</h3>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {found
-            ? <ShieldAlert className="w-4 h-4 text-red-400" />
-            : <ShieldCheck className="w-4 h-4 text-emerald-400" />}
-          <span className={"text-xs font-mono " + (found ? 'text-red-400' : 'text-emerald-400')}>
-            {found ? 'Vulnerable' : status === 'protected' ? 'Protegido' : 'No encontrado'}
-          </span>
-        </div>
+    <div className="result-card">
+      <div className="card-header">
+        <span className="card-title"><Users size={14} style={{color:'#8b5cf6'}}/> Enumeración de usuarios</span>
+        <span style={{fontSize:'11px',padding:'3px 10px',borderRadius:'99px',fontWeight:600,background:found?'rgba(239,68,68,0.1)':'rgba(16,185,129,0.1)',color:found?'#f87171':'#34d399',border:'1px solid '+(found?'rgba(239,68,68,0.25)':'rgba(16,185,129,0.25)')}}>
+          {found?'Vulnerable':status==='protected'?'Protegido':'Sin usuarios'}
+        </span>
       </div>
-
-      <div className="px-5 py-4 space-y-3">
-        <div className="flex flex-wrap gap-3 text-xs font-mono text-muted-foreground">
-          <span>Metodo: <span className="text-foreground">{method}</span></span>
-          {reference?.owasp && <span>OWASP: <span className="text-foreground">{reference.owasp}</span></span>}
-          {reference?.cvss && <span>CVSS: <span className={"font-bold " + (found ? 'text-red-400' : 'text-emerald-400')}>{reference.cvss.score.toFixed(1)}</span></span>}
-        </div>
-
-        {protectionDetails && (
-          <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 font-mono">{protectionDetails}</p>
-        )}
-
-        {found && users.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Usuarios encontrados</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {users.map((u) => (
-                <div key={u.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/20 border border-red-400/20">
-                  <User className="w-3 h-3 text-red-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{u.name}</p>
-                    <p className="text-xs font-mono text-muted-foreground/60 truncate">@{u.slug}</p>
-                  </div>
+      <div style={{padding:'16px 20px',display:'flex',flexWrap:'wrap',gap:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+        <span className="mono" style={{fontSize:'11px',color:'rgba(255,255,255,0.3)'}}>Método: <span style={{color:'rgba(255,255,255,0.6)'}}>{method}</span></span>
+        {reference?.owasp&&<span className="mono" style={{fontSize:'11px',color:'rgba(255,255,255,0.3)'}}>OWASP: <span style={{color:'rgba(255,255,255,0.6)'}}>{reference.owasp}</span></span>}
+        {reference?.cvss&&<span className="mono" style={{fontSize:'11px',color:'rgba(255,255,255,0.3)'}}>CVSS: <span style={{color:found?'#f87171':'#34d399',fontWeight:700}}>{reference.cvss.score.toFixed(1)}</span></span>}
+      </div>
+      {protectionDetails&&<div style={{padding:'12px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><p className="mono" style={{fontSize:'11px',color:'rgba(255,255,255,0.35)',lineHeight:1.6}}>{protectionDetails}</p></div>}
+      {found&&users.length>0&&(
+        <div style={{padding:'16px 20px'}}>
+          <div className="mono" style={{fontSize:'9px',color:'rgba(255,255,255,0.2)',letterSpacing:'2px',marginBottom:'10px'}}>USUARIOS ENCONTRADOS</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:'8px'}}>
+            {users.map(u=>(
+              <div key={u.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',borderRadius:'10px',background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.15)'}}>
+                <User size={13} style={{color:'#f87171',flexShrink:0}}/>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:'12px',fontWeight:600,color:'rgba(255,255,255,0.8)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</div>
+                  <div className="mono" style={{fontSize:'10px',color:'rgba(255,255,255,0.3)'}}>@{u.slug}</div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
