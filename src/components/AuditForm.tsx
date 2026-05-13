@@ -1,70 +1,61 @@
 import { useState } from 'react';
-import { Search, Loader2, Globe, AlertCircle } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 
 function isValidUrl(v: string) {
-  try {
-    const u = new URL(v.startsWith('http') ? v : 'https://' + v);
-    return u.hostname.includes('.') && u.hostname.length > 3;
-  } catch { return false; }
+  try { const u = new URL(v.startsWith('http') ? v : 'https://' + v); return u.hostname.includes('.') && u.hostname.length > 3; }
+  catch { return false; }
 }
 
-interface AuditFormProps { onSubmit: (url: string) => void; isLoading: boolean; }
-
-export function AuditForm({ onSubmit, isLoading }: AuditFormProps) {
+export function AuditForm({ onSubmit, isLoading }: { onSubmit:(url:string)=>void; isLoading:boolean }) {
   const [url, setUrl] = useState('');
   const [touched, setTouched] = useState(false);
-  const [focused, setFocused] = useState(false);
   const trimmed = url.trim();
-  const isValid = trimmed.length > 0 && isValidUrl(trimmed);
-  const showError = touched && trimmed.length > 0 && !isValid;
+  const valid = isValidUrl(trimmed);
+  const showErr = touched && trimmed.length > 0 && !valid;
 
-  const submit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); setTouched(true);
-    if (!isValid) return;
+    if (!trimmed || !valid) return;
     onSubmit(trimmed.startsWith('http') ? trimmed : 'https://' + trimmed);
   };
 
   return (
-    <form onSubmit={submit} className="w-full max-w-lg" style={{ position: 'relative' }}>
-      <div className="flex" style={{
-        borderRadius: '12px',
-        boxShadow: focused
-          ? '0 0 0 3px rgba(139,92,246,0.15), 0 0 40px rgba(139,92,246,0.1)'
-          : '0 0 0 1px rgba(255,255,255,0.08)',
-        transition: 'box-shadow 0.2s ease',
-      }}>
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="flex gap-0 w-full">
         <div className="relative flex-1">
-          <Globe size={14} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: focused ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.2)', transition: 'color 0.2s' }}/>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none">
+            <Search size={15}/>
+          </span>
           <input
             type="text"
-            placeholder="ejemplo.com"
+            placeholder="ejemplo.com o https://ejemplo.com"
             value={url}
             onChange={e => { setUrl(e.target.value); setTouched(false); }}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTouched(true); }}
+            onBlur={() => setTouched(true)}
             disabled={isLoading}
             autoComplete="off"
             spellCheck={false}
-            className="input-field"
-            style={{ borderRadius: '12px 0 0 12px', border: 'none', boxShadow: 'none' }}
+            className={
+              'w-full h-12 sm:h-[50px] pl-11 pr-4 text-sm input-field rounded-l-xl rounded-r-none ' +
+              (showErr ? 'border-red-500/40 focus:border-red-500/60 focus:shadow-none' : '')
+            }
           />
+          {showErr && (
+            <p className="absolute top-full left-0 mt-1 font-mono text-[9px] text-red-400">
+              ✗ URL no válida — prueba: miweb.com
+            </p>
+          )}
         </div>
         <button
           type="submit"
           disabled={isLoading || !trimmed}
-          className="btn-primary"
-          style={{ borderRadius: '0 12px 12px 0', height: '48px', minWidth: '120px', justifyContent: 'center' }}
+          className="btn-primary h-12 sm:h-[50px] px-6 sm:px-8 text-sm rounded-r-xl rounded-l-none whitespace-nowrap flex items-center gap-2"
         >
           {isLoading
             ? <><Loader2 size={14} className="animate-spin"/>Escaneando</>
-            : <><Search size={14}/>Auditar</>}
+            : <>Auditar <span className="hidden sm:inline">→</span></>}
         </button>
       </div>
-      {showError && (
-        <div className="absolute left-0 mono flex items-center gap-1.5 text-red-400/80 mt-2" style={{ fontSize: '11px', top: '100%' }}>
-          <AlertCircle size={10}/>URL no válida · prueba con: miweb.com
-        </div>
-      )}
     </form>
   );
 }
