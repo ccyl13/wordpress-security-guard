@@ -1,50 +1,41 @@
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, FileJson } from 'lucide-react';
 import type { AuditResult } from '@/types/wordpress-audit';
-import { useToast } from '@/hooks/use-toast';
 
 interface ExportButtonProps {
   result: AuditResult;
 }
 
 export function ExportButton({ result }: ExportButtonProps) {
-  const { toast } = useToast();
-
   const handleExport = () => {
     const exportData = {
-      ...result,
-      timestamp: result.timestamp.toISOString(),
+      tool: 'WPSentry',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
+      ...result,
     };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    });
-
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const hostname = new URL(result.url).hostname.replace(/[^a-z0-9]/gi, '-');
     a.href = url;
-    a.download = `wp-audit-${new URL(result.url).hostname}-${Date.now()}.json`;
+    a.download = 'wpsentry-' + hostname + '-' + new Date().toISOString().split('T')[0] + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    toast({
-      title: 'Exportado',
-      description: 'El informe se ha descargado correctamente',
-    });
   };
 
   return (
     <Button
-      variant="outline"
-      size="sm"
       onClick={handleExport}
-      className="gap-2"
+      variant="outline"
+      className="border-primary/20 text-primary hover:bg-primary/10 hover:border-primary/40 font-mono text-sm gap-2"
     >
-      <Download className="w-4 h-4" />
+      <FileJson className="w-4 h-4" />
       Exportar JSON
+      <Download className="w-3 h-3 opacity-60" />
     </Button>
   );
 }
