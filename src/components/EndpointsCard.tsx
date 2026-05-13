@@ -1,47 +1,48 @@
 import type { EndpointCheck } from '@/types/wordpress-audit';
 import { ShieldAlert, ShieldCheck, Loader2, Globe } from 'lucide-react';
 
-const RISK: Record<string,string> = {
-  critical: 'text-red-400 bg-red-400/10 border-red-400/25',
-  high:     'text-orange-400 bg-orange-400/10 border-orange-400/25',
-  medium:   'text-amber-400 bg-amber-400/10 border-amber-400/25',
-  low:      'text-blue-400 bg-blue-400/10 border-blue-400/25',
-  info:     'text-white/30 bg-white/[0.04] border-white/10',
+const RISK: Record<string, { color: string; bg: string; border: string }> = {
+  critical: { color:'#ef4444', bg:'rgba(239,68,68,0.1)',   border:'rgba(239,68,68,0.3)' },
+  high:     { color:'#f97316', bg:'rgba(249,115,22,0.1)',  border:'rgba(249,115,22,0.3)' },
+  medium:   { color:'#f59e0b', bg:'rgba(245,158,11,0.1)', border:'rgba(245,158,11,0.3)' },
+  low:      { color:'#3b82f6', bg:'rgba(59,130,246,0.1)', border:'rgba(59,130,246,0.3)' },
+  info:     { color:'rgba(255,255,255,0.3)', bg:'rgba(255,255,255,0.05)', border:'rgba(255,255,255,0.1)' },
 };
 
 export function EndpointsCard({ endpoints }: { endpoints: EndpointCheck[] }) {
   const exposed = endpoints.filter(e=>e.status==='accessible').length;
   return (
-    <div className="glass rounded-2xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+    <div className="result-card overflow-hidden">
+      <div className="card-header">
         <div className="flex items-center gap-2">
-          <Globe size={15} className="text-purple" />
-          <span className="font-bold text-sm">Endpoints sensibles</span>
+          <Globe size={13} style={{ color: '#3b82f6' }}/>
+          <span className="card-title">Endpoints sensibles</span>
         </div>
-        <span className={`mono text-[10px] px-2.5 py-0.5 rounded-full ${exposed>0?'text-red-400 bg-red-400/10':'text-emerald-400 bg-emerald-400/10'}`}>
-          {exposed} expuesto{exposed!==1?'s':''}
+        <span className="mono px-2 py-0.5 rounded-full" style={{ fontSize: 10, color: exposed > 0 ? '#ef4444' : '#10b981', background: exposed > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}>
+          {exposed} expuesto{exposed !== 1 ? 's' : ''}
         </span>
       </div>
-      <div className="divide-y divide-white/[0.04]">
+      <div>
         {endpoints.map(ep => {
-          const isOk = ep.status!=='accessible'; const isChecking = ep.status==='checking';
+          const r = RISK[ep.risk] || RISK.info;
+          const ok = ep.status !== 'accessible';
+          const checking = ep.status === 'checking';
           return (
-            <div key={ep.url} className={`px-5 py-3 flex items-start gap-3 hover:bg-white/[0.02] transition-colors ${!isOk&&!isChecking?'bg-red-500/[0.04]':''}`}>
-              <div className="mt-0.5 shrink-0">
-                {isChecking ? <Loader2 size={14} className="text-white/30 animate-spin"/> : isOk ? <ShieldCheck size={14} className="text-emerald-400"/> : <ShieldAlert size={14} className="text-red-400"/>}
+            <div key={ep.url} className="flex items-start gap-3 px-4 py-3 border-b border-white/4 last:border-0 transition-colors hover:bg-white/2" style={!ok && !checking ? {} : { background: 'rgba(239,68,68,0.03)' }}>
+              <div style={{ marginTop: 2, flexShrink: 0 }}>
+                {checking ? <Loader2 size={13} className="animate-spin text-white/20"/> : ok ? <ShieldCheck size={13} style={{ color: '#10b981' }}/> : <ShieldAlert size={13} style={{ color: '#ef4444' }}/>}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <code className="mono text-[11px] font-semibold text-white/90">{ep.name}</code>
-                  <span className={`mono text-[8px] px-1.5 py-0.5 rounded border uppercase font-bold ${RISK[ep.risk]||RISK.info}`}>{ep.risk}</span>
-                  {ep.statusCode && <span className="mono text-[9px] text-white/20">HTTP {ep.statusCode}</span>}
+                  <code className="mono font-medium text-white/70" style={{ fontSize: 11 }}>{ep.name}</code>
+                  <span className="mono px-1.5 py-0.5 rounded uppercase" style={{ fontSize: 9, color: r.color, background: r.bg, border: '1px solid ' + r.border, letterSpacing: '0.5px' }}>{ep.risk}</span>
+                  {ep.statusCode && <span className="mono text-white/20" style={{ fontSize: 9 }}>HTTP {ep.statusCode}</span>}
                 </div>
-                <p className="text-[11px] text-white/40 mt-0.5">{ep.description}</p>
-                <code className="mono text-[9px] text-white/20">{ep.url.replace(/^https?:\/\/[^/]+/,'')}</code>
+                <p className="text-white/30 mt-0.5" style={{ fontSize: 11 }}>{ep.description}</p>
               </div>
-              <div className={`mono text-[9px] px-2 py-0.5 rounded font-bold shrink-0 ${!isOk&&!isChecking?'text-red-400 bg-red-400/10':'text-emerald-400 bg-emerald-400/10'}`}>
-                {isChecking?'···':!isOk&&!isChecking?'EXPOSED':'OK'}
-              </div>
+              <span className="mono shrink-0 px-2 py-0.5 rounded" style={{ fontSize: 9, color: ok ? '#10b981' : '#ef4444', background: ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)' }}>
+                {checking ? '···' : ok ? 'OK' : 'EXPOSED'}
+              </span>
             </div>
           );
         })}
