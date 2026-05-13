@@ -1,66 +1,51 @@
 import type { CvssScore } from '@/types/wordpress-audit';
 
-interface ScoreGaugeProps {
-  score: number;
-  cvss?: CvssScore;
+interface ScoreGaugeProps { score: number; cvss?: CvssScore; }
+
+function cfg(score: number) {
+  if (score >= 80) return { stroke: '#10b981', glow: '#10b98160', label: 'Seguro',    labelBg: '#10b98118', labelColor: '#10b981', labelBorder: '#10b98140' };
+  if (score >= 60) return { stroke: '#f59e0b', glow: '#f59e0b60', label: 'Moderado',  labelBg: '#f59e0b18', labelColor: '#f59e0b', labelBorder: '#f59e0b40' };
+  if (score >= 40) return { stroke: '#f97316', glow: '#f9731660', label: 'Vulnerable', labelBg: '#f9731618', labelColor: '#f97316', labelBorder: '#f9731640' };
+  return           { stroke: '#ef4444', glow: '#ef444460', label: 'Critico',    labelBg: '#ef444418', labelColor: '#ef4444', labelBorder: '#ef444440' };
 }
 
-function getScoreColor(score: number) {
-  if (score >= 80) return { text: 'text-emerald-400', stroke: '#34d399', label: 'Seguro', bg: 'bg-emerald-400/10 border-emerald-400/20' };
-  if (score >= 60) return { text: 'text-yellow-400', stroke: '#facc15', label: 'Moderado', bg: 'bg-yellow-400/10 border-yellow-400/20' };
-  if (score >= 40) return { text: 'text-orange-400', stroke: '#fb923c', label: 'Vulnerable', bg: 'bg-orange-400/10 border-orange-400/20' };
-  return { text: 'text-red-400', stroke: '#f87171', label: 'Critico', bg: 'bg-red-400/10 border-red-400/20' };
-}
-
-function getCvssColor(severity: string) {
-  const map: Record<string, string> = {
-    None: 'text-emerald-400', Low: 'text-yellow-300',
-    Medium: 'text-orange-400', High: 'text-red-400', Critical: 'text-red-600',
-  };
-  return map[severity] || 'text-muted-foreground';
+function cvssColor(s: string) {
+  return { None:'#10b981', Low:'#f59e0b', Medium:'#f97316', High:'#ef4444', Critical:'#dc2626' }[s] || '#ffffff60';
 }
 
 export function ScoreGauge({ score, cvss }: ScoreGaugeProps) {
-  const { text, stroke, label, bg } = getScoreColor(score);
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
+  const c = cfg(score);
+  const R = 54; const circ = 2 * Math.PI * R;
+  const offset = circ - (score / 100) * circ;
 
   return (
-    <div className="rounded-xl bg-card border border-border p-6 flex flex-col items-center h-full justify-center gap-4">
-      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Puntuacion de seguridad</p>
+    <div style={{ background: '#08080f', border: '1px solid #ffffff0a', borderRadius: '12px', padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', height: '100%', justifyContent: 'center' }}>
+      <span style={{ fontSize: '9px', fontFamily: 'JetBrains Mono,monospace', color: '#ffffff30', letterSpacing: '2px', textTransform: 'uppercase' }}>Puntuacion de seguridad</span>
 
-      <div className="relative w-40 h-40">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r={radius} fill="none" stroke="hsl(var(--border))" strokeWidth="10" />
-          <circle
-            cx="60" cy="60" r={radius}
-            fill="none"
-            stroke={stroke}
-            strokeWidth="10"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)', filter: 'drop-shadow(0 0 8px ' + stroke + '66)' }}
-          />
+      <div style={{ position: 'relative', width: '148px', height: '148px' }}>
+        <svg width="148" height="148" viewBox="0 0 148 148" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="74" cy="74" r={R} fill="none" stroke="#ffffff08" strokeWidth="10"/>
+          <circle cx="74" cy="74" r={R} fill="none" stroke={c.stroke} strokeWidth="10"
+            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)', filter: 'drop-shadow(0 0 8px ' + c.glow + ')' }}/>
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={"text-4xl font-black tabular-nums " + text}>{score}</span>
-          <span className="text-xs text-muted-foreground font-mono">/100</span>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: '42px', fontWeight: 800, color: c.stroke, lineHeight: 1, letterSpacing: '-2px', fontFamily: "'Space Grotesk',sans-serif", textShadow: '0 0 30px ' + c.glow }}>{score}</span>
+          <span style={{ fontSize: '10px', color: '#ffffff25', fontFamily: 'JetBrains Mono,monospace' }}>/100</span>
         </div>
       </div>
 
-      <div className={"px-4 py-1.5 rounded-full border text-sm font-semibold " + bg + " " + text}>
-        {label}
+      <div style={{ padding: '5px 16px', borderRadius: '99px', background: c.labelBg, border: '1px solid ' + c.labelBorder, color: c.labelColor, fontSize: '12px', fontWeight: 700, letterSpacing: '.3px' }}>
+        {c.label}
       </div>
 
       {cvss && (
-        <div className="w-full rounded-lg bg-secondary/50 border border-border p-3 text-center">
-          <p className="text-xs text-muted-foreground font-mono mb-1">CVSS 3.1</p>
-          <p className={"text-2xl font-black tabular-nums " + getCvssColor(cvss.severity)}>{cvss.score.toFixed(1)}</p>
-          <p className={"text-xs font-semibold " + getCvssColor(cvss.severity)}>{cvss.severity}</p>
+        <div style={{ width: '100%', background: '#0d0d1e', border: '1px solid #ffffff08', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+          <div style={{ fontSize: '9px', fontFamily: 'JetBrains Mono,monospace', color: '#ffffff25', letterSpacing: '2px', marginBottom: '4px' }}>CVSS 3.1</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: cvssColor(cvss.severity), fontFamily: "'Space Grotesk',sans-serif", letterSpacing: '-1px', textShadow: '0 0 20px ' + cvssColor(cvss.severity) + '60', lineHeight: 1 }}>{cvss.score.toFixed(1)}</div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: cvssColor(cvss.severity), marginTop: '2px' }}>{cvss.severity}</div>
           {cvss.vector && (
-            <p className="text-xs text-muted-foreground/60 font-mono mt-1 break-all leading-tight">{cvss.vector.replace('CVSS:3.1/', '')}</p>
+            <div style={{ fontSize: '8px', fontFamily: 'JetBrains Mono,monospace', color: '#ffffff18', marginTop: '6px', wordBreak: 'break-all', lineHeight: 1.4 }}>{cvss.vector.replace('CVSS:3.1/','')}</div>
           )}
         </div>
       )}
