@@ -1,109 +1,76 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Info, Tag, Palette, FileText, Code, Shield, Lock } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import type { WordPressInfo } from '@/types/wordpress-audit';
+import type { WordPressInfo, WordPressDetection } from '@/types/wordpress-audit';
+import { CheckCircle2, XCircle, AlertTriangle, Info, Lock, Cpu } from 'lucide-react';
 
 interface WordPressInfoCardProps {
   info: WordPressInfo;
   isWordPress: boolean;
+  wpDetection: WordPressDetection;
 }
 
-export function WordPressInfoCard({ info, isWordPress }: WordPressInfoCardProps) {
+function Row({ label, value, status }: { label: string; value: React.ReactNode; status?: 'good' | 'bad' | 'warn' | 'neutral' }) {
+  const colors = { good: 'text-emerald-400', bad: 'text-red-400', warn: 'text-yellow-400', neutral: 'text-muted-foreground' };
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-3 text-xl">
-          <Info className="w-6 h-6 text-primary" />
-          Información del Sitio
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Code className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">CMS</span>
-            </div>
-            <p className="font-semibold">
-              {isWordPress ? 'WordPress' : 'No detectado'}
-            </p>
-          </div>
-          
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Tag className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">Versión</span>
-            </div>
-            <p className={info.version ? 'font-semibold text-yellow-400' : 'font-semibold text-green-400'}>
-              {info.version || 'Oculta'}
-            </p>
-          </div>
-          
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Palette className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">Tema</span>
-            </div>
-            <p className="font-semibold font-mono text-sm">
-              {info.theme || 'No detectado'}
-            </p>
-          </div>
-          
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <FileText className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">Generator Meta</span>
-            </div>
-            <p className={info.generator ? 'font-semibold text-yellow-400' : 'font-semibold text-green-400'}>
-              {info.generator ? 'Expuesto ⚠️' : 'Oculto ✓'}
-            </p>
-          </div>
-          
-          {/* WAF Detection */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Shield className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">WAF</span>
-            </div>
-            {info.wafDetected ? (
-              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                {info.wafDetected}
-              </Badge>
-            ) : (
-              <p className="font-semibold text-yellow-400">No detectado</p>
-            )}
-          </div>
-          
-          {/* SSL Info */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Lock className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wide">SSL/TLS</span>
-            </div>
-            {info.sslInfo?.valid ? (
-              <p className="font-semibold text-green-400">Activo ✓</p>
-            ) : (
-              <p className="font-semibold text-red-400">No detectado</p>
-            )}
-          </div>
+    <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+      <span className="text-xs text-muted-foreground font-mono">{label}</span>
+      <span className={"text-xs font-semibold font-mono text-right " + (status ? colors[status] : 'text-foreground')}>{value}</span>
+    </div>
+  );
+}
+
+export function WordPressInfoCard({ info, isWordPress, wpDetection }: WordPressInfoCardProps) {
+  const detectionBadge = wpDetection === 'detected'
+    ? { label: 'WordPress detectado', color: 'text-primary bg-primary/10 border-primary/20' }
+    : wpDetection === 'blocked'
+    ? { label: 'Acceso bloqueado', color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' }
+    : { label: 'No detectado', color: 'text-muted-foreground bg-secondary border-border' };
+
+  return (
+    <div className="rounded-xl bg-card border border-border overflow-hidden h-full">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm">Informacion del sitio</h3>
         </div>
-        
-        {(info.version || info.generator) && (
-          <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <p className="text-sm text-yellow-400">
-              💡 <strong>Recomendación:</strong> Oculta la versión de WordPress y el meta tag generator para dificultar la identificación de vulnerabilidades conocidas.
-            </p>
-          </div>
+        <span className={"text-xs font-mono px-2 py-0.5 rounded border " + detectionBadge.color}>
+          {detectionBadge.label}
+        </span>
+      </div>
+      <div className="px-5 py-2">
+        <Row
+          label="Version WordPress"
+          value={info.version ? info.version : 'Oculta'}
+          status={info.version ? 'warn' : 'good'}
+        />
+        <Row
+          label="Tema activo"
+          value={info.theme || 'No detectado'}
+          status="neutral"
+        />
+        <Row
+          label="Cabecera Generator"
+          value={info.generator ? 'Expuesta' : 'Oculta'}
+          status={info.generator ? 'bad' : 'good'}
+        />
+        <Row
+          label="readme.html"
+          value={info.readme ? 'Accesible' : 'Bloqueado'}
+          status={info.readme ? 'bad' : 'good'}
+        />
+        {info.wafDetected !== undefined && (
+          <Row
+            label="WAF detectado"
+            value={info.wafDetected || 'No detectado'}
+            status={info.wafDetected ? 'good' : 'warn'}
+          />
         )}
-        
-        {info.wafDetected && (
-          <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <p className="text-sm text-green-400">
-              ✓ <strong>WAF detectado:</strong> {info.wafDetected} está protegiendo este sitio contra ataques comunes.
-            </p>
-          </div>
+        {info.sslInfo && (
+          <Row
+            label="SSL / HTTPS"
+            value={info.sslInfo.valid ? 'Valido' + (info.sslInfo.issuer ? ' - ' + info.sslInfo.issuer : '') : 'Invalido o ausente'}
+            status={info.sslInfo.valid ? 'good' : 'bad'}
+          />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
