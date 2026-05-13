@@ -1,60 +1,44 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { AuditResult } from '@/types/wordpress-audit';
 
-const STORAGE_KEY = 'wp-audit-history';
-const MAX_HISTORY = 10;
+const KEY = 'wpsentry_audit_history';
+const MAX = 10;
 
-interface StoredAudit {
-  url: string;
-  timestamp: string;
-  score: number;
-  isWordPress: boolean;
+function toStr(ts: any): string {
+  if (typeof ts === 'string' && ts.length > 0) return ts;
+  if (ts instanceof Date) return ts.toISOString();
+  return new Date().toISOString();
+}
+
+function load(): AuditResult[] {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map((item: any) => ({ ...item, timestamp: toStr(item.timestamp) }));
+  } catch { return []; }
+}
+
+function save(history: AuditResult[]) {
+  try { localStorage.setItem(KEY, JSON.stringify(history)); } catch { /* ignore */ }
 }
 
 export function useAuditHistory() {
-  const [history, setHistory] = useState<StoredAudit[]>([]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      }
-    } catch {
-      // Ignore errors
-    }
-  }, []);
+  const [history, setHistory] = useState<AuditResult[]>(() => load());
 
   const addToHistory = (result: AuditResult) => {
-    const newEntry: StoredAudit = {
-      url: result.url,
-      timestamp: result.timestamp.toISOString(),
-      score: result.overallScore,
-      isWordPress: result.isWordPress,
-    };
-
-    setHistory((prev) => {
-      // Remove duplicate if exists
-      const filtered = prev.filter((h) => h.url !== result.url);
-      const updated = [newEntry, ...filtered].slice(0, MAX_HISTORY);
-      
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        // Ignore storage errors
-      }
-      
-      return updated;
+    const item = { ...result, timestamp: toStr(result.timestamp) };
+    setHistory(prev => {
+      const next = [item, ...prev.filter(h => h.url !== item.url)].slice(0, MAX);
+      save(next);
+      return next;
     });
   };
 
   const clearHistory = () => {
+    try { localStorage.removeItem(KEY); } catch { /* ignore */ }
     setHistory([]);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore errors
-    }
   };
 
   return { history, addToHistory, clearHistory };
