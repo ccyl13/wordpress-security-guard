@@ -1,53 +1,70 @@
 import { useState } from 'react';
-import { Globe, Loader2 } from 'lucide-react';
+import { Search, Loader2, Globe, AlertCircle } from 'lucide-react';
 
 function isValidUrl(v: string) {
-  try { const u = new URL(v.startsWith('http') ? v : 'https://' + v); return u.hostname.includes('.') && u.hostname.length > 3; }
-  catch { return false; }
+  try {
+    const u = new URL(v.startsWith('http') ? v : 'https://' + v);
+    return u.hostname.includes('.') && u.hostname.length > 3;
+  } catch { return false; }
 }
 
-export function AuditForm({ onSubmit, isLoading }: { onSubmit: (u: string) => void; isLoading: boolean }) {
+interface AuditFormProps { onSubmit: (url: string) => void; isLoading: boolean; }
+
+export function AuditForm({ onSubmit, isLoading }: AuditFormProps) {
   const [url, setUrl] = useState('');
   const [touched, setTouched] = useState(false);
+  const [focused, setFocused] = useState(false);
   const trimmed = url.trim();
-  const isValid = isValidUrl(trimmed);
-  const showErr = touched && trimmed.length > 0 && !isValid;
+  const isValid = trimmed.length > 0 && isValidUrl(trimmed);
+  const showError = touched && trimmed.length > 0 && !isValid;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault(); setTouched(true);
-    if (!trimmed || !isValid) return;
+    if (!isValid) return;
     onSubmit(trimmed.startsWith('http') ? trimmed : 'https://' + trimmed);
   };
 
   return (
-    <form onSubmit={submit} style={{ maxWidth: '580px', margin: '0 auto' }}>
-      <div className="search-form" style={{ display: 'flex', position: 'relative' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Globe size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.2)', pointerEvents: 'none' }}/>
+    <form onSubmit={submit} className="w-full max-w-lg" style={{ position: 'relative' }}>
+      <div className="flex" style={{
+        borderRadius: '12px',
+        boxShadow: focused
+          ? '0 0 0 3px rgba(139,92,246,0.15), 0 0 40px rgba(139,92,246,0.1)'
+          : '0 0 0 1px rgba(255,255,255,0.08)',
+        transition: 'box-shadow 0.2s ease',
+      }}>
+        <div className="relative flex-1">
+          <Globe size={14} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: focused ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.2)', transition: 'color 0.2s' }}/>
           <input
-            className="search-input"
             type="text"
-            placeholder="ejemplo.com o https://ejemplo.com"
+            placeholder="ejemplo.com"
             value={url}
             onChange={e => { setUrl(e.target.value); setTouched(false); }}
-            onBlur={() => setTouched(true)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => { setFocused(false); setTouched(true); }}
             disabled={isLoading}
             autoComplete="off"
             spellCheck={false}
-            style={{ borderColor: showErr ? 'rgba(239,68,68,0.4)' : undefined }}
+            className="input-field"
+            style={{ borderRadius: '12px 0 0 12px', border: 'none', boxShadow: 'none' }}
           />
         </div>
-        <button className="btn-primary" type="submit" disabled={isLoading || !trimmed}
-          style={{ borderRadius: '0 12px 12px 0', height: '52px', opacity: !trimmed && !isLoading ? 0.5 : 1 }}>
-          {isLoading ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }}/> Escaneando</> : 'Auditar →'}
+        <button
+          type="submit"
+          disabled={isLoading || !trimmed}
+          className="btn-primary"
+          style={{ borderRadius: '0 12px 12px 0', height: '48px', minWidth: '120px', justifyContent: 'center' }}
+        >
+          {isLoading
+            ? <><Loader2 size={14} className="animate-spin"/>Escaneando</>
+            : <><Search size={14}/>Auditar</>}
         </button>
       </div>
-      {showErr && (
-        <p style={{ marginTop: '8px', fontSize: '12px', color: '#f87171', textAlign: 'left', paddingLeft: '4px' }}>
-          URL no válida — prueba con: miweb.com
-        </p>
+      {showError && (
+        <div className="absolute left-0 mono flex items-center gap-1.5 text-red-400/80 mt-2" style={{ fontSize: '11px', top: '100%' }}>
+          <AlertCircle size={10}/>URL no válida · prueba con: miweb.com
+        </div>
       )}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </form>
   );
 }
