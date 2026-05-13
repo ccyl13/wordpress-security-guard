@@ -1,86 +1,58 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, ShieldAlert, ShieldCheck, ShieldOff } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { UserEnumeration } from '@/types/wordpress-audit';
-import { cn } from '@/lib/utils';
-import { SecurityReferenceBadges } from './SecurityReferenceBadges';
+import { Users, ShieldAlert, ShieldCheck, User } from 'lucide-react';
 
 interface UserEnumerationCardProps {
-  data: UserEnumeration;
+  userEnumeration: UserEnumeration;
 }
 
-export function UserEnumerationCard({ data }: UserEnumerationCardProps) {
-  const borderClass = data.status === 'found' 
-    ? 'border-red-500/30' 
-    : data.status === 'protected' 
-      ? 'border-yellow-500/30' 
-      : 'border-green-500/30';
+export function UserEnumerationCard({ userEnumeration }: UserEnumerationCardProps) {
+  const { found, status, users, method, protectionDetails, reference } = userEnumeration;
 
   return (
-    <Card className={cn("bg-card border-border", borderClass)}>
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-3 text-xl">
-          <Users className="w-6 h-6 text-primary" />
-          Enumeración de Usuarios
-          {data.status === 'found' ? (
-            <ShieldAlert className="w-5 h-5 text-red-400 ml-auto" />
-          ) : data.status === 'protected' ? (
-            <ShieldOff className="w-5 h-5 text-yellow-400 ml-auto" />
-          ) : (
-            <ShieldCheck className="w-5 h-5 text-green-400 ml-auto" />
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {data.status === 'found' ? (
-          <div className="space-y-4">
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-              <p className="text-red-400 font-medium">⚠️ Vulnerabilidad detectada</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Se pueden enumerar usuarios mediante: <code className="text-xs bg-background px-1 py-0.5 rounded">{data.method}</code>
-              </p>
-              {data.reference && (
-                <SecurityReferenceBadges reference={data.reference} />
-              )}
+    <div className="rounded-xl bg-card border border-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm">Enumeracion de usuarios</h3>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {found
+            ? <ShieldAlert className="w-4 h-4 text-red-400" />
+            : <ShieldCheck className="w-4 h-4 text-emerald-400" />}
+          <span className={"text-xs font-mono " + (found ? 'text-red-400' : 'text-emerald-400')}>
+            {found ? 'Vulnerable' : status === 'protected' ? 'Protegido' : 'No encontrado'}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 space-y-3">
+        <div className="flex flex-wrap gap-3 text-xs font-mono text-muted-foreground">
+          <span>Metodo: <span className="text-foreground">{method}</span></span>
+          {reference?.owasp && <span>OWASP: <span className="text-foreground">{reference.owasp}</span></span>}
+          {reference?.cvss && <span>CVSS: <span className={"font-bold " + (found ? 'text-red-400' : 'text-emerald-400')}>{reference.cvss.score.toFixed(1)}</span></span>}
+        </div>
+
+        {protectionDetails && (
+          <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2 font-mono">{protectionDetails}</p>
+        )}
+
+        {found && users.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Usuarios encontrados</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {users.map((u) => (
+                <div key={u.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/20 border border-red-400/20">
+                  <User className="w-3 h-3 text-red-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{u.name}</p>
+                    <p className="text-xs font-mono text-muted-foreground/60 truncate">@{u.slug}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            
-            {data.users.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">ID</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Slug</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-mono">{user.id}</TableCell>
-                      <TableCell>{user.name}</TableCell>
-                      <TableCell className="font-mono text-muted-foreground">{user.slug}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        ) : data.status === 'protected' ? (
-          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-center">
-            <p className="text-yellow-400 font-medium">🛡️ Endpoint protegido</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {data.protectionDetails || 'El sitio bloquea las solicitudes de enumeración de usuarios (401/403/406/429). Esto indica buenas prácticas de seguridad.'}
-            </p>
-          </div>
-        ) : (
-          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
-            <p className="text-green-400 font-medium">✓ No se detectó enumeración de usuarios</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              El sitio está protegido contra enumeración de usuarios vía REST API y parámetros author
-            </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
