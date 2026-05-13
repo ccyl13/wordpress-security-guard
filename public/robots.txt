@@ -1,14 +1,5 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
 User-agent: *
 Allow: /
+
+# WPSentry - WordPress Security Auditor
+# https://github.com/ccyl13/wordpress-security-guard
