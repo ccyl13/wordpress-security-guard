@@ -36,8 +36,7 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
           const path = getPath(ep.url);
 
           return (
-            <div key={i}
-              className={'flex items-start gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02] ' + (acc ? 'bg-red-950/10' : '')}>
+            <div key={i} className={'flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-white/[0.02] ' + (acc ? 'bg-red-950/10' : '')}>
 
               <div className="mt-0.5 shrink-0">
                 {chk
@@ -48,28 +47,29 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap mb-0.5">
                   <span className="text-[11px] font-mono font-semibold text-white/80">{ep.name}</span>
                   <span className={'pill uppercase ' + (RISK[ep.risk] || 'pill-gray')}>{ep.risk}</span>
                   {ep.statusCode != null && ep.statusCode > 0 && (
                     <span className="font-mono text-[9px] text-white/25">HTTP {ep.statusCode}</span>
                   )}
                 </div>
-                <p className="text-[10px] text-white/35 mt-0.5 leading-snug">{ep.description}</p>
 
-                {/* URL — clicable si está expuesto */}
+                <p className="text-[10px] text-white/35 leading-snug mb-1">{ep.description}</p>
+
+                {/* URL — siempre visible, clicable si expuesto */}
                 {acc ? (
                   <a
                     href={ep.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-mono text-[9px] text-red-400/60 hover:text-red-400 mt-1 transition-colors break-all"
+                    className="inline-flex items-center gap-1.5 font-mono text-[10px] text-red-400 hover:text-red-300 transition-colors font-medium underline underline-offset-2"
                   >
+                    <ExternalLink size={10} className="shrink-0"/>
                     {path}
-                    <ExternalLink size={9} className="shrink-0"/>
                   </a>
                 ) : (
-                  <code className="font-mono text-[9px] text-white/15 mt-0.5 block">{path}</code>
+                  <code className="font-mono text-[10px] text-white/20">{path}</code>
                 )}
               </div>
 
