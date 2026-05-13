@@ -8,6 +8,18 @@ interface Props {
   onClear: () => void;
 }
 
+function fmtDate(ts: any): string {
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('es-ES');
+  } catch { return ''; }
+}
+
+function getHost(url: string): string {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 export function AuditHistory({ history, onSelect, onClear }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -48,15 +60,14 @@ export function AuditHistory({ history, onSelect, onClear }: Props) {
           </div>
           <div className="max-h-80 overflow-y-auto divide-y divide-white/[0.04]">
             {history.map((item, i) => {
-              const host = (() => { try { return new URL(item.url).hostname; } catch { return item.url; } })();
-              const score = item.overallScore;
+              const score = typeof item.overallScore === 'number' ? item.overallScore : 0;
               const sc = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-amber-400' : score >= 40 ? 'text-orange-400' : 'text-red-400';
               return (
                 <button key={i} onClick={() => { onSelect(item.url); setOpen(false); }}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors text-left">
                   <div className="min-w-0">
-                    <p className="text-[12px] font-semibold text-white/80 truncate">{host}</p>
-                    <p className="font-mono text-[9px] text-white/25 mt-0.5">{new Date(item.timestamp).toLocaleDateString('es-ES')}</p>
+                    <p className="text-[12px] font-semibold text-white/80 truncate">{getHost(item.url)}</p>
+                    <p className="font-mono text-[9px] text-white/25 mt-0.5">{fmtDate(item.timestamp)}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-3">
                     <span className={'font-mono text-[14px] font-extrabold ' + sc}>{score}</span>
