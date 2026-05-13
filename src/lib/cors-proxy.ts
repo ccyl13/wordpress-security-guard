@@ -1,12 +1,16 @@
-// WPSentry CORS proxy layer
-// corsproxy.io => returns real HTTP status codes (reliable for 401, 403, 404 detection)
-// allorigins   => always returns 200 but good for body content
-// Strategy: race both, prefer corsproxy status, use allorigins body as fallback
+// WPSentry CORS proxy
+// Live test results:
+// corsproxy.io => real HTTP status + body (best option)
+// allorigins   => always HTTP 200, sometimes times out
 
-const TIMEOUT_MS = 6000;
+const CORSPROXY_TIMEOUT = 6000;
+const ALLORIGINS_TIMEOUT = 5000;
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, r) => setTimeout(() => r(new Error(label + ' timeout')), ms))
+  ]);
 }
 
 export interface ProxyResponse {
@@ -17,60 +21,56 @@ export interface ProxyResponse {
   url: string;
 }
 
-async function tryCorsproxy(url: string): Promise<ProxyResponse | null> {
-  try {
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-    const r = await withTimeout(fetch(proxyUrl, {
-      headers: { Accept: 'text/html,application/json,*/*' }
-    }), TIMEOUT_MS);
-    const text = await r.text();
-    const headers: Record<string, string> = {};
-    r.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-    return { ok: r.ok, status: r.status, text, headers, url };
-  } catch { return null; }
+async function fetchCorsproxy(url: string): Promise<ProxyResponse> {
+  const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+  const r = await withTimeout(
+    fetch(proxyUrl, { headers: { Accept: 'text/html,application/json,*/*' } }),
+    CORSPROXY_TIMEOUT, 'corsproxy'
+  );
+  const text = await r.text();
+  const headers: Record<string, string> = {};
+  r.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+  return { ok: r.ok, status: r.status, text, headers, url };
 }
 
-async function tryAllorigins(url: string): Promise<ProxyResponse | null> {
-  try {
-    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-    const r = await withTimeout(fetch(proxyUrl), TIMEOUT_MS);
-    const text = await r.text();
-    const headers: Record<string, string> = {};
-    r.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-    // allorigins always returns 200 — don't trust its status for existence checks
-    return { ok: true, status: 200, text, headers, url };
-  } catch { return null; }
+async function fetchAllorigins(url: string): Promise<ProxyResponse> {
+  const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  const r = await withTimeout(fetch(proxyUrl), ALLORIGINS_TIMEOUT, 'allorigins');
+  const text = await r.text();
+  const headers: Record<string, string> = {};
+  r.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+  // allorigins always returns 200 regardless of real status — use ok=true but status=200
+  return { ok: true, status: 200, text, headers, url };
 }
 
-// Main fetch: get best response from both proxies
+// Main fetch: try corsproxy (gives real status), fall back to allorigins
 export async function fetchWithProxy(url: string): Promise<ProxyResponse> {
-  const [corsproxy, allorigins] = await Promise.all([
-    tryCorsproxy(url),
-    tryAllorigins(url),
-  ]);
+  // Try both in parallel, return first successful corsproxy response
+  // If corsproxy fails/times out, use allorigins
+  const corspromise = fetchCorsproxy(url).catch(() => null);
+  const allopromise = fetchAllorigins(url).catch(() => null);
 
-  // Prefer corsproxy because it gives real status codes
-  if (corsproxy && corsproxy.text.length > 0) return corsproxy;
-  if (allorigins && allorigins.text.length > 0) return allorigins;
+  // Wait for corsproxy first (it's more reliable)
+  const cors = await corspromise;
+  if (cors && cors.text.length > 10) return cors;
+
+  // Fall back to allorigins
+  const allo = await allopromise;
+  if (allo && allo.text.length > 10) return allo;
+
   return { ok: false, status: 0, text: '', headers: {}, url };
 }
 
-// Endpoint check: uses corsproxy status (real) + body validation
-// allorigins as body-only fallback when corsproxy is slow/blocked
-export async function checkEndpoint(url: string): Promise<{ accessible: boolean; status: number }> {
-  const [corsproxy, allorigins] = await Promise.all([
-    tryCorsproxy(url),
-    tryAllorigins(url),
+// For endpoint existence check: use corsproxy status (real), allorigins just for body content
+export async function fetchEndpoint(url: string): Promise<ProxyResponse> {
+  // Race both proxies — corsproxy has real status, allorigins has always-200
+  const [cors, allo] = await Promise.all([
+    fetchCorsproxy(url).catch(() => null),
+    fetchAllorigins(url).catch(() => null),
   ]);
 
-  // corsproxy gives real status — trust it for 404/403/401
-  if (corsproxy) {
-    const accessible = corsproxy.status > 0 && corsproxy.status < 400;
-    return { accessible, status: corsproxy.status };
-  }
-  // allorigins fallback — only use body, can't trust status
-  if (allorigins) {
-    return { accessible: true, status: 200 }; // unknown, assume exists
-  }
-  return { accessible: false, status: 0 };
+  // Prefer corsproxy result (real HTTP status)
+  if (cors && cors.text.length > 0) return cors;
+  if (allo && allo.text.length > 0) return allo;
+  return { ok: false, status: 0, text: '', headers: {}, url };
 }
