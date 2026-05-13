@@ -1,78 +1,48 @@
-const Pulse = ({ w, h, mb }: { w: string; h: string; mb?: string }) => (
-  <div style={{
-    width: w, height: h, borderRadius: '4px',
-    background: 'linear-gradient(90deg, #0d0d1e 25%, #16163a 50%, #0d0d1e 75%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.5s infinite',
-    marginBottom: mb || '0',
-  }}/>
+const S = ({ w, h, mb }: { w:string; h:string; mb?:string }) => (
+  <div className="skeleton rounded" style={{ width:w, height:h, marginBottom:mb||0 }}/>
 );
 
 export function AuditLoadingSkeleton() {
   return (
-    <div style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
-
-      {/* top bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <div style={{ fontSize: '9px', color: '#ffffff15', letterSpacing: '2px', marginBottom: '6px' }}>SITIO AUDITADO</div>
-          <Pulse w="280px" h="16px" mb="6px"/>
-          <Pulse w="120px" h="10px"/>
-        </div>
-        <Pulse w="120px" h="36px"/>
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex justify-between items-start mb-6">
+        <div className="space-y-2"><S w="260px" h="12px"/><S w="180px" h="20px"/><S w="120px" h="10px"/></div>
+        <S w="120px" h="38px"/>
       </div>
-
-      {/* score + info row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px', marginBottom: '12px' }}>
-        <div style={{ background: '#08080f', border: '1px solid #ffffff08', borderRadius: '10px', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <Pulse w="80px" h="10px"/>
-          <div style={{ width: '120px', height: '120px', borderRadius: '50%', border: '8px solid #0d0d1e', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,#0d0d1e 25%,#16163a 50%,#0d0d1e 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }}/>
-          </div>
-          <Pulse w="60px" h="24px"/>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="glass rounded-2xl p-6 flex flex-col items-center gap-4">
+          <S w="80px" h="10px"/>
+          <div className="w-36 h-36 rounded-full skeleton"/>
+          <S w="70px" h="28px"/>
         </div>
-        <div style={{ background: '#08080f', border: '1px solid #ffffff08', borderRadius: '10px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Pulse w="140px" h="12px"/>
+        <div className="lg:col-span-2 glass rounded-2xl p-5 space-y-3">
+          <S w="140px" h="12px" mb="8px"/>
           {[...Array(5)].map((_,i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Pulse w="120px" h="10px"/>
-              <Pulse w="60px" h="10px"/>
+            <div key={i} className="flex justify-between items-center py-2 border-b border-white/[0.04]">
+              <S w="120px" h="10px"/><S w="70px" h="10px"/>
             </div>
           ))}
         </div>
       </div>
-
-      {/* two col row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[...Array(2)].map((_,i) => (
-          <div key={i} style={{ background: '#08080f', border: '1px solid #ffffff08', borderRadius: '10px', padding: '20px' }}>
-            <Pulse w="100px" h="11px" mb="14px"/>
+          <div key={i} className="glass rounded-2xl p-5 space-y-3">
+            <S w="100px" h="11px" mb="4px"/>
             {[...Array(6)].map((_,j) => (
-              <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ffffff08', flexShrink: 0 }}/>
-                <Pulse w={80 + j * 12 + 'px'} h="9px"/>
+              <div key={j} className="flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-white/10 shrink-0"/>
+                <S w={(70+j*15)+'px'} h="9px"/>
               </div>
             ))}
           </div>
         ))}
       </div>
-
-      {/* recs */}
-      <div style={{ background: '#08080f', border: '1px solid #ffffff08', borderRadius: '10px', padding: '20px' }}>
-        <Pulse w="120px" h="11px" mb="14px"/>
+      <div className="glass rounded-2xl p-5 space-y-4">
+        <S w="120px" h="11px"/>
         {[...Array(3)].map((_,i) => (
-          <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '14px', alignItems: 'flex-start' }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ffffff08', marginTop: '3px', flexShrink: 0 }}/>
-            <div style={{ flex: 1 }}>
-              <Pulse w="200px" h="11px" mb="6px"/>
-              <Pulse w="100%" h="9px"/>
-            </div>
+          <div key={i} className="flex gap-3">
+            <div className="w-2 h-2 rounded-full bg-white/10 mt-1 shrink-0"/>
+            <div className="flex-1 space-y-2"><S w="200px" h="11px"/><S w="100%" h="9px"/></div>
           </div>
         ))}
       </div>
