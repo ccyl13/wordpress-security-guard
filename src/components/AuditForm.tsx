@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 function isValidUrl(v: string) {
   try { const u = new URL(v.startsWith('http') ? v : 'https://' + v); return u.hostname.includes('.') && u.hostname.length > 3; }
@@ -21,41 +21,34 @@ export function AuditForm({ onSubmit, isLoading }: { onSubmit:(url:string)=>void
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
-      <div className="flex gap-0 w-full">
+      <div className="flex w-full rounded-xl overflow-hidden border border-white/10 focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(139,92,246,0.1)] transition-all">
         <div className="relative flex-1">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none">
-            <Search size={15}/>
-          </span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none text-base">⊕</span>
           <input
             type="text"
-            placeholder="ejemplo.com o https://ejemplo.com"
+            placeholder="ejemplo.com"
             value={url}
             onChange={e => { setUrl(e.target.value); setTouched(false); }}
             onBlur={() => setTouched(true)}
             disabled={isLoading}
             autoComplete="off"
             spellCheck={false}
-            className={
-              'w-full h-12 sm:h-[50px] pl-11 pr-4 text-sm input-field rounded-l-xl rounded-r-none ' +
-              (showErr ? 'border-red-500/40 focus:border-red-500/60 focus:shadow-none' : '')
-            }
+            className="w-full h-12 sm:h-[52px] pl-11 pr-4 text-sm bg-white/[0.03] text-white placeholder-white/20 font-mono outline-none border-0"
           />
-          {showErr && (
-            <p className="absolute top-full left-0 mt-1 font-mono text-[9px] text-red-400">
-              ✗ URL no válida — prueba: miweb.com
-            </p>
-          )}
         </div>
         <button
           type="submit"
           disabled={isLoading || !trimmed}
-          className="btn-primary h-12 sm:h-[50px] px-6 sm:px-8 text-sm rounded-r-xl rounded-l-none whitespace-nowrap flex items-center gap-2"
+          className="btn-primary h-12 sm:h-[52px] px-6 sm:px-8 text-sm rounded-none rounded-r-xl whitespace-nowrap flex items-center gap-2 shrink-0"
         >
           {isLoading
-            ? <><Loader2 size={14} className="animate-spin"/>Escaneando</>
-            : <>Auditar <span className="hidden sm:inline">→</span></>}
+            ? <><Loader2 size={14} className="animate-spin" />Escaneando</>
+            : <>Auditar &rarr;</>}
         </button>
       </div>
+      {showErr && (
+        <p className="mt-1.5 font-mono text-[10px] text-red-400">✗ URL no válida — prueba: miweb.com</p>
+      )}
     </form>
   );
 }
