@@ -1,4 +1,4 @@
-import { fetchWithProxy } from './cors-proxy';
+import { fetchWithProxy, fetchEndpoint } from './cors-proxy';
 import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore } from '@/types/wordpress-audit';
 import { HEADER_REFERENCES } from './security-references';
 
@@ -8,8 +8,7 @@ export interface AuditProgress {
 type ProgressCallback = (p: AuditProgress) => void;
 
 interface EndpointDef {
-  path: string;
-  name: string;
+  path: string; name: string;
   risk: 'critical'|'high'|'medium'|'low'|'info';
   description: string;
   bodyMustContain?: string;
@@ -126,21 +125,17 @@ function calcScore(sh: SecurityHeader[], ep: EndpointCheck[], ue: UserEnumeratio
   return Math.max(0, Math.min(100, Math.round(s)));
 }
 
-// Smart check: uses corsproxy real status + body validation to avoid soft-404 false positives
 async function checkEndpointSmart(baseUrl: string, ep: EndpointDef): Promise<EndpointCheck> {
   const url = baseUrl + ep.path;
   try {
-    const result = await fetchWithProxy(url);
-    // Hard fail: non-2xx status from corsproxy (which gives real status)
+    const result = await fetchEndpoint(url);
     if (!result.ok || result.status === 0 || result.status >= 400) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
     const body = result.text || '';
-    // Body must contain expected string to confirm it's the real file, not a soft-404
     if (ep.bodyMustContain && !body.includes(ep.bodyMustContain)) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
-    // Body must NOT contain these strings (e.g. HTML page instead of raw file)
     if (ep.bodyMustNotContain && body.includes(ep.bodyMustNotContain)) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
@@ -154,6 +149,8 @@ async function detectUserEnumeration(baseUrl: string): Promise<UserEnumeration> 
   const method = 'REST API /?rest_route=/wp/v2/users';
   const ref = { owasp:'OWASP A07:2021', cvss:{ score:5.3, severity:'Medium' as const, vector:'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N' } };
   const notFound: UserEnumeration = { found:false, status:'protected', method, users:[], protectionDetails:'Enumeracion de usuarios no detectada', reference: ref };
+  // Use corsproxy (real status) for user enumeration
+  // Try both endpoints in parallel
   const urls = [
     baseUrl + '/?rest_route=/wp/v2/users&per_page=10',
     baseUrl + '/wp-json/wp/v2/users?per_page=10',
