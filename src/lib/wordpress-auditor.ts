@@ -17,20 +17,20 @@ interface EndpointDef {
 }
 
 const SENSITIVE_ENDPOINTS: EndpointDef[] = [
-  { path: '/xmlrpc.php',                 name: 'XML-RPC',       risk: 'critical', description: 'Permite ataques de fuerza bruta y DDoS amplificado',        bodyMustContain: 'XML-RPC' },
-  { path: '/wp-login.php',               name: 'WP Login',      risk: 'high',     description: 'Login expuesto a ataques de fuerza bruta',                  bodyMustContain: 'wp-login' },
-  { path: '/wp-admin/',                  name: 'WP Admin',      risk: 'high',     description: 'Panel de administracion accesible publicamente',            bodyMustContain: 'wp-admin' },
-  { path: '/?rest_route=/wp/v2/users',   name: 'REST Users',    risk: 'high',     description: 'API REST expone lista de usuarios registrados',             bodyMustContain: '"slug"' },
-  { path: '/wp-json/',                   name: 'REST API',      risk: 'medium',   description: 'API REST habilitada y accesible',                           bodyMustContain: 'namespaces' },
-  { path: '/readme.html',                name: 'Readme',        risk: 'medium',   description: 'Revela la version exacta de WordPress',                     bodyMustContain: 'WordPress' },
-  { path: '/license.txt',               name: 'License',        risk: 'low',      description: 'Revela informacion de la instalacion de WordPress',         bodyMustContain: 'WordPress' },
-  { path: '/wp-content/debug.log',       name: 'Debug Log',     risk: 'critical', description: 'Log de errores con rutas internas expuesto',                bodyMustNotContain: '<!DOCTYPE' },
-  { path: '/wp-config.php.bak',          name: 'Config Backup', risk: 'critical', description: 'Backup de configuracion con credenciales de BD',            bodyMustNotContain: '<!DOCTYPE' },
-  { path: '/.env',                       name: 'ENV File',      risk: 'critical', description: 'Variables de entorno con credenciales',                     bodyMustNotContain: '<!DOCTYPE' },
-  { path: '/.git/HEAD',                  name: 'Git Repo',      risk: 'critical', description: 'Repositorio Git expuesto — codigo fuente filtrable',        bodyMustContain: 'ref:' },
-  { path: '/wp-content/uploads/',        name: 'Uploads Dir',   risk: 'medium',   description: 'Directorio de uploads con listado habilitado',              bodyMustContain: 'Index of' },
-  { path: '/sitemap.xml',               name: 'Sitemap',        risk: 'info',     description: 'Sitemap publico — puede revelar estructura interna',        bodyMustContain: '<urlset' },
-  { path: '/robots.txt',                name: 'Robots.txt',     risk: 'info',     description: 'Puede revelar rutas ocultas o sensibles',                   bodyMustContain: 'User-agent' },
+  { path: '/xmlrpc.php',               name: 'XML-RPC',       risk: 'critical', description: 'Permite ataques de fuerza bruta y DDoS amplificado',       bodyMustContain: 'XML-RPC' },
+  { path: '/wp-login.php',             name: 'WP Login',      risk: 'high',     description: 'Login expuesto a ataques de fuerza bruta',                 bodyMustContain: 'wp-login' },
+  { path: '/wp-admin/',                name: 'WP Admin',      risk: 'high',     description: 'Panel de administracion accesible publicamente',           bodyMustContain: 'wp-admin' },
+  { path: '/?rest_route=/wp/v2/users', name: 'REST Users',    risk: 'high',     description: 'API REST expone lista de usuarios registrados',            bodyMustContain: '"slug"' },
+  { path: '/wp-json/',                 name: 'REST API',      risk: 'medium',   description: 'API REST habilitada y accesible',                          bodyMustContain: 'namespaces' },
+  { path: '/readme.html',              name: 'Readme',        risk: 'medium',   description: 'Revela la version exacta de WordPress',                    bodyMustContain: 'WordPress' },
+  { path: '/license.txt',              name: 'License',       risk: 'low',      description: 'Revela informacion de la instalacion de WordPress',        bodyMustContain: 'WordPress' },
+  { path: '/wp-content/debug.log',     name: 'Debug Log',     risk: 'critical', description: 'Log de errores con rutas internas expuesto',               bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/wp-config.php.bak',        name: 'Config Backup', risk: 'critical', description: 'Backup de configuracion con credenciales de BD',           bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/.env',                     name: 'ENV File',      risk: 'critical', description: 'Variables de entorno con credenciales',                    bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/.git/HEAD',                name: 'Git Repo',      risk: 'critical', description: 'Repositorio Git expuesto — codigo fuente filtrable',       bodyMustContain: 'ref:' },
+  { path: '/wp-content/uploads/',      name: 'Uploads Dir',   risk: 'medium',   description: 'Directorio de uploads con listado habilitado',             bodyMustContain: 'Index of' },
+  { path: '/sitemap.xml',              name: 'Sitemap',       risk: 'info',     description: 'Sitemap publico — puede revelar estructura interna',       bodyMustContain: '<urlset' },
+  { path: '/robots.txt',               name: 'Robots.txt',    risk: 'info',     description: 'Puede revelar rutas ocultas o sensibles',                  bodyMustContain: 'User-agent' },
 ];
 
 const HEADERS_LIST = [
@@ -64,7 +64,6 @@ function extractTheme(body: string): string | null {
 
 function tryParseUsers(text: string): Array<{id:number;name:string;slug:string}> {
   try {
-    // Find start of JSON array, ignore any leading content (proxies sometimes prepend stuff)
     const start = text.indexOf('[');
     if (start === -1) return [];
     const parsed = JSON.parse(text.slice(start));
@@ -127,17 +126,21 @@ function calcScore(sh: SecurityHeader[], ep: EndpointCheck[], ue: UserEnumeratio
   return Math.max(0, Math.min(100, Math.round(s)));
 }
 
+// Smart check: uses corsproxy real status + body validation to avoid soft-404 false positives
 async function checkEndpointSmart(baseUrl: string, ep: EndpointDef): Promise<EndpointCheck> {
   const url = baseUrl + ep.path;
   try {
     const result = await fetchWithProxy(url);
-    if (!result.ok || result.status === 0) {
+    // Hard fail: non-2xx status from corsproxy (which gives real status)
+    if (!result.ok || result.status === 0 || result.status >= 400) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
     const body = result.text || '';
+    // Body must contain expected string to confirm it's the real file, not a soft-404
     if (ep.bodyMustContain && !body.includes(ep.bodyMustContain)) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
+    // Body must NOT contain these strings (e.g. HTML page instead of raw file)
     if (ep.bodyMustNotContain && body.includes(ep.bodyMustNotContain)) {
       return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
     }
@@ -147,32 +150,24 @@ async function checkEndpointSmart(baseUrl: string, ep: EndpointDef): Promise<End
   }
 }
 
-// Try multiple user enumeration vectors
 async function detectUserEnumeration(baseUrl: string): Promise<UserEnumeration> {
   const method = 'REST API /?rest_route=/wp/v2/users';
   const ref = { owasp:'OWASP A07:2021', cvss:{ score:5.3, severity:'Medium' as const, vector:'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N' } };
   const notFound: UserEnumeration = { found:false, status:'protected', method, users:[], protectionDetails:'Enumeracion de usuarios no detectada', reference: ref };
-
-  // Try both REST API variants in parallel
   const urls = [
     baseUrl + '/?rest_route=/wp/v2/users&per_page=10',
     baseUrl + '/wp-json/wp/v2/users?per_page=10',
   ];
-
   try {
     const results = await Promise.all(urls.map(u => fetchWithProxy(u).catch(() => null)));
     for (const r of results) {
-      if (!r || !r.ok) continue;
+      if (!r || !r.ok || r.status >= 400) continue;
       const text = r.text || '';
-      // Must look like a JSON array with user objects
       if (!text.includes('"slug"') && !text.includes('"name"')) continue;
       const users = tryParseUsers(text);
-      if (users.length > 0) {
-        return { found:true, status:'vulnerable', method, users, reference: ref };
-      }
+      if (users.length > 0) return { found:true, status:'vulnerable', method, users, reference: ref };
     }
   } catch { /* ignore */ }
-
   return notFound;
 }
 
