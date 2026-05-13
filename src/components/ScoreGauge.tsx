@@ -1,68 +1,69 @@
-import { cn } from '@/lib/utils';
+import type { CvssScore } from '@/types/wordpress-audit';
 
 interface ScoreGaugeProps {
   score: number;
+  cvss?: CvssScore;
 }
 
-export function ScoreGauge({ score }: ScoreGaugeProps) {
-  const getScoreColor = () => {
-    if (score >= 80) return 'text-green-400';
-    if (score >= 60) return 'text-yellow-400';
-    if (score >= 40) return 'text-orange-400';
-    return 'text-red-400';
-  };
+function getScoreColor(score: number) {
+  if (score >= 80) return { text: 'text-emerald-400', stroke: '#34d399', label: 'Seguro', bg: 'bg-emerald-400/10 border-emerald-400/20' };
+  if (score >= 60) return { text: 'text-yellow-400', stroke: '#facc15', label: 'Moderado', bg: 'bg-yellow-400/10 border-yellow-400/20' };
+  if (score >= 40) return { text: 'text-orange-400', stroke: '#fb923c', label: 'Vulnerable', bg: 'bg-orange-400/10 border-orange-400/20' };
+  return { text: 'text-red-400', stroke: '#f87171', label: 'Critico', bg: 'bg-red-400/10 border-red-400/20' };
+}
 
-  const getScoreLabel = () => {
-    if (score >= 80) return 'Seguro';
-    if (score >= 60) return 'Aceptable';
-    if (score >= 40) return 'Mejorable';
-    return 'Crítico';
+function getCvssColor(severity: string) {
+  const map: Record<string, string> = {
+    None: 'text-emerald-400', Low: 'text-yellow-300',
+    Medium: 'text-orange-400', High: 'text-red-400', Critical: 'text-red-600',
   };
+  return map[severity] || 'text-muted-foreground';
+}
 
-  const getScoreBg = () => {
-    if (score >= 80) return 'from-green-500/20 to-green-500/5';
-    if (score >= 60) return 'from-yellow-500/20 to-yellow-500/5';
-    if (score >= 40) return 'from-orange-500/20 to-orange-500/5';
-    return 'from-red-500/20 to-red-500/5';
-  };
-
-  const circumference = 2 * Math.PI * 45;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
+export function ScoreGauge({ score, cvss }: ScoreGaugeProps) {
+  const { text, stroke, label, bg } = getScoreColor(score);
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
 
   return (
-    <div className={cn("relative p-8 rounded-2xl bg-gradient-to-br", getScoreBg())}>
-      <div className="flex items-center justify-center">
-        <svg className="w-40 h-40 transform -rotate-90">
+    <div className="rounded-xl bg-card border border-border p-6 flex flex-col items-center h-full justify-center gap-4">
+      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Puntuacion de seguridad</p>
+
+      <div className="relative w-40 h-40">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r={radius} fill="none" stroke="hsl(var(--border))" strokeWidth="10" />
           <circle
-            cx="80"
-            cy="80"
-            r="45"
-            stroke="currentColor"
-            strokeWidth="8"
+            cx="60" cy="60" r={radius}
             fill="none"
-            className="text-muted/30"
-          />
-          <circle
-            cx="80"
-            cy="80"
-            r="45"
-            stroke="currentColor"
-            strokeWidth="8"
-            fill="none"
-            strokeLinecap="round"
+            stroke={stroke}
+            strokeWidth="10"
             strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            className={cn("transition-all duration-1000 ease-out", getScoreColor())}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)', filter: 'drop-shadow(0 0 8px ' + stroke + '66)' }}
           />
         </svg>
-        <div className="absolute flex flex-col items-center">
-          <span className={cn("text-5xl font-black", getScoreColor())}>{score}</span>
-          <span className="text-sm text-muted-foreground font-medium">/100</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={"text-4xl font-black tabular-nums " + text}>{score}</span>
+          <span className="text-xs text-muted-foreground font-mono">/100</span>
         </div>
       </div>
-      <p className={cn("text-center mt-4 text-xl font-bold", getScoreColor())}>
-        {getScoreLabel()}
-      </p>
+
+      <div className={"px-4 py-1.5 rounded-full border text-sm font-semibold " + bg + " " + text}>
+        {label}
+      </div>
+
+      {cvss && (
+        <div className="w-full rounded-lg bg-secondary/50 border border-border p-3 text-center">
+          <p className="text-xs text-muted-foreground font-mono mb-1">CVSS 3.1</p>
+          <p className={"text-2xl font-black tabular-nums " + getCvssColor(cvss.severity)}>{cvss.score.toFixed(1)}</p>
+          <p className={"text-xs font-semibold " + getCvssColor(cvss.severity)}>{cvss.severity}</p>
+          {cvss.vector && (
+            <p className="text-xs text-muted-foreground/60 font-mono mt-1 break-all leading-tight">{cvss.vector.replace('CVSS:3.1/', '')}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
