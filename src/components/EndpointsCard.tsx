@@ -7,6 +7,13 @@ const RISK: Record<string,string> = {
   critical:'pill-red', high:'pill-orange', medium:'pill-yellow', low:'pill-blue', info:'pill-gray'
 };
 
+function getPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.pathname + u.search) || '/';
+  } catch { return url; }
+}
+
 export function EndpointsCard({ endpoints }: EndpointsCardProps) {
   const exposed = endpoints.filter(e => e.status === 'accessible').length;
 
@@ -23,14 +30,15 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
       </div>
 
       <div className="divide-y divide-white/[0.04]">
-        {endpoints.map(ep => {
+        {endpoints.map((ep, i) => {
           const acc = ep.status === 'accessible';
           const chk = ep.status === 'checking';
-          const path = (() => { try { return new URL(ep.url).pathname + new URL(ep.url).search; } catch { return ep.url; } })();
+          const path = getPath(ep.url);
 
           return (
-            <div key={ep.url}
+            <div key={i}
               className={'flex items-start gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02] ' + (acc ? 'bg-red-950/10' : '')}>
+
               <div className="mt-0.5 shrink-0">
                 {chk
                   ? <Loader2 size={14} className="text-white/30 animate-spin"/>
@@ -43,29 +51,29 @@ export function EndpointsCard({ endpoints }: EndpointsCardProps) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] font-mono font-semibold text-white/80">{ep.name}</span>
                   <span className={'pill uppercase ' + (RISK[ep.risk] || 'pill-gray')}>{ep.risk}</span>
-                  {ep.statusCode && ep.statusCode > 0 && (
+                  {ep.statusCode != null && ep.statusCode > 0 && (
                     <span className="font-mono text-[9px] text-white/25">HTTP {ep.statusCode}</span>
                   )}
                 </div>
                 <p className="text-[10px] text-white/35 mt-0.5 leading-snug">{ep.description}</p>
 
-                {/* Clickable URL */}
+                {/* URL — clicable si está expuesto */}
                 {acc ? (
                   <a
                     href={ep.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-mono text-[9px] text-red-400/70 hover:text-red-400 mt-1 transition-colors"
+                    className="inline-flex items-center gap-1 font-mono text-[9px] text-red-400/60 hover:text-red-400 mt-1 transition-colors break-all"
                   >
                     {path}
-                    <ExternalLink size={9}/>
+                    <ExternalLink size={9} className="shrink-0"/>
                   </a>
                 ) : (
-                  <code className="font-mono text-[9px] text-white/15">{path}</code>
+                  <code className="font-mono text-[9px] text-white/15 mt-0.5 block">{path}</code>
                 )}
               </div>
 
-              <span className={'pill shrink-0 ' + (acc ? 'pill-red' : 'pill-green')}>
+              <span className={'pill shrink-0 mt-0.5 ' + (acc ? 'pill-red' : 'pill-green')}>
                 {chk ? '···' : acc ? 'EXPOSED' : 'OK'}
               </span>
             </div>
