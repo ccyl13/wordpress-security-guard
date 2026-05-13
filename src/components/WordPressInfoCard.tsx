@@ -1,33 +1,33 @@
 import type { WordPressInfo, WordPressDetection } from '@/types/wordpress-audit';
 import { Cpu } from 'lucide-react';
 
-function Row({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-      <span style={{fontSize:'12px',color:'rgba(255,255,255,0.35)',fontFamily:'JetBrains Mono,monospace'}}>{label}</span>
-      <span style={{fontSize:'12px',fontWeight:600,color:color||'rgba(255,255,255,0.7)',fontFamily:'JetBrains Mono,monospace'}}>{value}</span>
-    </div>
-  );
-}
+const Row = ({ label, value, good }: { label: string; value: string; good: boolean | null }) => (
+  <div className="flex items-center justify-between py-2.5 border-b border-white/4 last:border-0">
+    <span className="mono text-white/30" style={{ fontSize: 11 }}>{label}</span>
+    <span className="mono font-medium" style={{ fontSize: 11, color: good === null ? 'rgba(255,255,255,0.5)' : good ? '#10b981' : '#ef4444' }}>{value}</span>
+  </div>
+);
 
 export function WordPressInfoCard({ info, isWordPress, wpDetection }: { info: WordPressInfo; isWordPress: boolean; wpDetection: WordPressDetection }) {
-  const badge = wpDetection==='detected'
-    ? {text:'WordPress detectado',bg:'rgba(124,58,237,0.12)',color:'#a78bfa',border:'rgba(124,58,237,0.3)'}
-    : wpDetection==='blocked'
-    ? {text:'Acceso bloqueado',bg:'rgba(245,158,11,0.1)',color:'#fbbf24',border:'rgba(245,158,11,0.25)'}
-    : {text:'No detectado',bg:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.4)',border:'rgba(255,255,255,0.1)'};
+  const badge = wpDetection === 'detected'
+    ? { label: 'WordPress detectado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.3)' }
+    : wpDetection === 'blocked'
+    ? { label: 'Acceso bloqueado', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' }
+    : { label: 'No detectado', color: 'rgba(255,255,255,0.3)', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)' };
   return (
-    <div className="result-card" style={{height:'100%'}}>
+    <div className="result-card h-full overflow-hidden">
       <div className="card-header">
-        <span className="card-title"><Cpu size={14} style={{color:'#a78bfa'}}/> Información del sitio</span>
-        <span style={{fontSize:'11px',padding:'3px 10px',borderRadius:'99px',background:badge.bg,color:badge.color,border:'1px solid '+badge.border,fontWeight:500}}>{badge.text}</span>
+        <div className="flex items-center gap-2"><Cpu size={13} style={{ color: '#8b5cf6' }}/><span className="card-title">Información del sitio</span></div>
+        <span className="mono px-2.5 py-1 rounded-full" style={{ fontSize: 10, color: badge.color, background: badge.bg, border: '1px solid ' + badge.border }}>{badge.label}</span>
       </div>
-      <Row label="Versión WordPress" value={info.version||'Oculta'} color={info.version?'#fbbf24':'#34d399'}/>
-      <Row label="Tema activo" value={info.theme||'No detectado'} color="rgba(255,255,255,0.55)"/>
-      <Row label="Cabecera Generator" value={info.generator?'Expuesta':'Oculta'} color={info.generator?'#f87171':'#34d399'}/>
-      <Row label="readme.html" value={info.readme?'Accesible':'Bloqueado'} color={info.readme?'#f87171':'#34d399'}/>
-      {info.wafDetected!==undefined&&<Row label="WAF detectado" value={info.wafDetected||'No detectado'} color={info.wafDetected?'#34d399':'#fbbf24'}/>}
-      {info.sslInfo&&<Row label="SSL / HTTPS" value={info.sslInfo.valid?'Válido'+(info.sslInfo.issuer?' · '+info.sslInfo.issuer:''):'Inválido'} color={info.sslInfo.valid?'#34d399':'#f87171'}/>}
+      <div className="px-4 py-2">
+        <Row label="Versión WordPress" value={info.version || 'Oculta'} good={!info.version}/>
+        <Row label="Tema activo" value={info.theme || 'No detectado'} good={null}/>
+        <Row label="Cabecera Generator" value={info.generator ? 'Expuesta' : 'Oculta'} good={!info.generator}/>
+        <Row label="readme.html" value={info.readme ? 'Accesible' : 'Bloqueado'} good={!info.readme}/>
+        {info.wafDetected !== undefined && <Row label="WAF detectado" value={info.wafDetected || 'No detectado'} good={!!info.wafDetected}/>}
+        {info.sslInfo && <Row label="SSL / HTTPS" value={info.sslInfo.valid ? 'Válido' + (info.sslInfo.issuer ? ' · ' + info.sslInfo.issuer : '') : 'Inválido'} good={info.sslInfo.valid}/>}
+      </div>
     </div>
   );
 }
