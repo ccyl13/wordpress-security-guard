@@ -1,6 +1,6 @@
 import { fetchWithProxy, checkEndpoint } from './cors-proxy';
 import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore } from '@/types/wordpress-audit';
-import { SECURITY_HEADER_REFERENCES } from './security-references';
+import { HEADER_REFERENCES } from './security-references';
 
 export interface AuditProgress {
   step: string; current: number; total: number; percentage: number;
@@ -56,7 +56,7 @@ function extractTheme(body: string): string | null {
 function analyzeHeaders(headers: Record<string,string>): SecurityHeader[] {
   return HEADERS_LIST.map(name => {
     const value = headers[name] || null;
-    const ref = SECURITY_HEADER_REFERENCES[name];
+    const ref = HEADER_REFERENCES[name];
     let status: 'secure'|'warning'|'vulnerable'|'info' = 'vulnerable';
     let description = '';
     if (name === 'content-security-policy') {
@@ -110,7 +110,6 @@ export async function auditWordPress(rawUrl: string, onProgress: ProgressCallbac
   const report = (step:string,current:number,total=4) =>
     onProgress({ step, current, total, percentage: Math.round((current/total)*100) });
 
-  // STEP 1: main page — headers + body
   report('Analizando cabeceras HTTP...', 0);
   const mainPage = await fetchWithProxy(baseUrl);
   const headers = mainPage.headers;
@@ -122,7 +121,6 @@ export async function auditWordPress(rawUrl: string, onProgress: ProgressCallbac
   const securityHeaders = analyzeHeaders(headers);
   report('Escaneando endpoints y usuarios en paralelo...', 1);
 
-  // STEP 2+3: ALL endpoint checks + user enum in parallel
   const [endpointResults, userEnumResult] = await Promise.all([
     Promise.all(
       SENSITIVE_ENDPOINTS.map(async (ep) => {
@@ -159,7 +157,7 @@ export async function auditWordPress(rawUrl: string, onProgress: ProgressCallbac
 
   const cvssOverall = calcCVSS(securityHeaders, endpointResults, userEnumResult);
   const overallScore = calcScore(securityHeaders, endpointResults, userEnumResult);
-  const readmeEp = endpointResults.find(e => e.path === '/readme.html');
+  const readmeEp = endpointResults.find(e => e.url.endsWith('/readme.html'));
 
   const wordpressInfo: WordPressInfo = {
     version: extractWPVersion(body) || undefined,
