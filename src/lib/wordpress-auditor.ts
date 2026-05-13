@@ -1,549 +1,187 @@
-import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore, WordPressDetection } from '@/types/wordpress-audit';
-import { getCvssSeverity } from '@/types/wordpress-audit';
-import { fetchWithProxy, checkEndpointsBatch } from './cors-proxy';
-import { 
-  HEADER_REFERENCES, 
-  WP_ENDPOINTS, 
-  USER_ENUMERATION_REFERENCE,
-  detectWaf,
-  calculateOverallCvss
-} from './security-references';
+import { fetchWithProxy, checkEndpoint } from './cors-proxy';
+import type { AuditResult, SecurityHeader, EndpointCheck, UserEnumeration, WordPressInfo, CvssScore } from '@/types/wordpress-audit';
+import { SECURITY_HEADER_REFERENCES } from './security-references';
 
-const SECURITY_HEADERS_TO_CHECK = [
-  { name: 'Content-Security-Policy', critical: true },
-  { name: 'X-Frame-Options', critical: true },
-  { name: 'X-Content-Type-Options', critical: true },
-  { name: 'Strict-Transport-Security', critical: true },
-  { name: 'X-XSS-Protection', critical: false },
-  { name: 'Referrer-Policy', critical: false },
-  { name: 'Permissions-Policy', critical: false },
-  { name: 'Cross-Origin-Embedder-Policy', critical: false },
-  { name: 'Cross-Origin-Opener-Policy', critical: false },
+export interface AuditProgress {
+  step: string; current: number; total: number; percentage: number;
+}
+type ProgressCallback = (p: AuditProgress) => void;
+
+const SENSITIVE_ENDPOINTS = [
+  { path: '/xmlrpc.php',           name: 'XML-RPC',       risk: 'critical' as const, description: 'Permite ataques de fuerza bruta y DDoS amplificado' },
+  { path: '/wp-login.php',         name: 'WP Login',      risk: 'high' as const,     description: 'Login expuesto a ataques de fuerza bruta' },
+  { path: '/wp-admin/',            name: 'WP Admin',      risk: 'high' as const,     description: 'Panel de administracion accesible publicamente' },
+  { path: '/wp-json/wp/v2/users',  name: 'REST Users',    risk: 'high' as const,     description: 'API REST expone usuarios registrados' },
+  { path: '/wp-json/',             name: 'REST API',      risk: 'medium' as const,   description: 'API REST habilitada y accesible' },
+  { path: '/readme.html',          name: 'Readme',        risk: 'medium' as const,   description: 'Revela version exacta de WordPress' },
+  { path: '/license.txt',          name: 'License',       risk: 'low' as const,      description: 'Revela informacion de la instalacion' },
+  { path: '/wp-content/debug.log', name: 'Debug Log',     risk: 'critical' as const, description: 'Log de errores con rutas internas expuesto' },
+  { path: '/wp-config.php.bak',    name: 'Config Backup', risk: 'critical' as const, description: 'Backup de configuracion con credenciales de BD' },
+  { path: '/.env',                 name: 'ENV File',      risk: 'critical' as const, description: 'Variables de entorno con credenciales' },
+  { path: '/.git/HEAD',            name: 'Git Repo',      risk: 'critical' as const, description: 'Repositorio Git expuesto' },
+  { path: '/wp-content/uploads/',  name: 'Uploads Dir',   risk: 'medium' as const,   description: 'Directorio de uploads con listado habilitado' },
+  { path: '/sitemap.xml',          name: 'Sitemap',       risk: 'info' as const,     description: 'Sitemap publico (informativo)' },
+  { path: '/robots.txt',           name: 'Robots',        risk: 'info' as const,     description: 'Puede revelar rutas ocultas' },
+];
+
+const HEADERS_LIST = [
+  'content-security-policy','strict-transport-security','x-frame-options',
+  'x-content-type-options','referrer-policy','permissions-policy',
+  'cross-origin-opener-policy','cross-origin-resource-policy','x-xss-protection',
 ];
 
 function normalizeUrl(url: string): string {
-  let normalized = url.trim();
-  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-    normalized = 'https://' + normalized;
-  }
-  return normalized.replace(/\/+$/, '');
+  try { const u = new URL(url.startsWith('http') ? url : 'https://' + url); return u.origin; }
+  catch { return url; }
 }
 
-function getHeaderStatus(name: string, value: string | null): 'secure' | 'warning' | 'vulnerable' {
-  if (!value) return 'vulnerable';
-  
-  const lowerValue = value.toLowerCase();
-  
-  switch (name.toLowerCase()) {
-    case 'content-security-policy':
-      if (lowerValue.includes('unsafe-inline') || lowerValue.includes('unsafe-eval')) {
-        return 'warning';
-      }
-      return 'secure';
-    case 'x-frame-options':
-      return (lowerValue === 'deny' || lowerValue === 'sameorigin') ? 'secure' : 'warning';
-    case 'strict-transport-security':
-      const maxAge = parseInt(lowerValue.match(/max-age=(\d+)/)?.[1] || '0');
-      if (maxAge >= 31536000) return 'secure';
-      if (maxAge > 0) return 'warning';
-      return 'vulnerable';
-    case 'x-content-type-options':
-      return lowerValue === 'nosniff' ? 'secure' : 'warning';
-    default:
-      return 'secure';
-  }
+function detectWAF(h: Record<string,string>, body: string): string | null {
+  if (h['x-sucuri-id'] || body.includes('Sucuri')) return 'Sucuri';
+  if (h['cf-ray'] || body.includes('Cloudflare')) return 'Cloudflare';
+  if (h['x-wordfence-blocked']) return 'Wordfence';
+  if (body.includes('ModSecurity')) return 'ModSecurity';
+  return null;
 }
 
-function getHeaderDescription(name: string, value: string | null): string {
-  if (!value) {
-    return `${name} no configurada - expone el sitio a ataques`;
-  }
-  
-  const descriptions: Record<string, string> = {
-    'content-security-policy': 'Define recursos permitidos en la página',
-    'x-frame-options': 'Protege contra clickjacking',
-    'strict-transport-security': 'Fuerza conexiones HTTPS',
-    'x-content-type-options': 'Previene MIME-sniffing',
-    'x-xss-protection': 'Filtro XSS del navegador',
-    'referrer-policy': 'Controla información de referrer',
-    'permissions-policy': 'Controla APIs del navegador',
-  };
-  
-  return descriptions[name.toLowerCase()] || `Configurado: ${value.substring(0, 50)}...`;
+function extractWPVersion(body: string): string | null {
+  const patterns = [/content="WordPress ([\d.]+)"/i, /\?ver=([\d.]+)/, /generator.*?WordPress ([\d.]+)/i];
+  for (const p of patterns) { const m = body.match(p); if (m?.[1]?.match(/^\d+\.\d/)) return m[1]; }
+  return null;
 }
 
-async function checkSecurityHeaders(baseUrl: string): Promise<{ headers: SecurityHeader[]; wafDetected: string | null }> {
-  const headers: SecurityHeader[] = [];
-  let wafDetected: string | null = null;
-  
-  try {
-    const response = await fetchWithProxy(baseUrl);
-    
-    // Detect WAF
-    wafDetected = detectWaf(response.headers);
-    
-    for (const header of SECURITY_HEADERS_TO_CHECK) {
-      const value = response.headers.get(header.name);
-      const status = getHeaderStatus(header.name, value);
-      headers.push({
-        name: header.name,
-        value,
-        status,
-        description: getHeaderDescription(header.name, value),
-        reference: status === 'vulnerable' ? HEADER_REFERENCES[header.name] : undefined,
-      });
-    }
-    
-    // Check for information disclosure headers
-    const serverHeader = response.headers.get('Server');
-    if (serverHeader) {
-      headers.push({
-        name: 'Server',
-        value: serverHeader,
-        status: 'warning',
-        description: 'Revela información del servidor',
-        reference: HEADER_REFERENCES['Server'],
-      });
-    }
-    
-    const poweredBy = response.headers.get('X-Powered-By');
-    if (poweredBy) {
-      headers.push({
-        name: 'X-Powered-By',
-        value: poweredBy,
-        status: 'warning',
-        description: 'Revela tecnología del backend',
-        reference: HEADER_REFERENCES['X-Powered-By'],
-      });
-    }
-  } catch {
-    // Headers check failed silently
-  }
-  
-  return { headers, wafDetected };
+function extractTheme(body: string): string | null {
+  const m = body.match(/wp-content\/themes\/([^/"']+)/); return m?.[1] || null;
 }
 
-async function checkEndpoints(baseUrl: string): Promise<EndpointCheck[]> {
-  const urls = WP_ENDPOINTS.map(ep => baseUrl + ep.path);
-  const results = await checkEndpointsBatch(urls, 6);
-  
-  return WP_ENDPOINTS.map((endpoint) => {
-    const fullUrl = baseUrl + endpoint.path;
-    const result = results.get(fullUrl) || { exists: false, statusCode: 0 };
-    
-    return {
-      name: endpoint.name,
-      url: fullUrl,
-      status: result.exists ? 'accessible' : 'blocked',
-      statusCode: result.statusCode,
-      description: endpoint.description,
-      risk: endpoint.risk,
-      reference: result.exists ? endpoint.reference : undefined,
-    };
-  });
-}
-
-// Detect WordPress subdirectories from HTML
-function detectWpPaths(html: string): string[] {
-  const paths = new Set<string>(['']); // Always include root
-  
-  // Look for wp-content paths that might reveal subdirectories
-  const wpContentMatches = html.matchAll(/["'](\/[^"']*?)?\/wp-content\//g);
-  for (const match of wpContentMatches) {
-    if (match[1]) {
-      paths.add(match[1]);
-    }
-  }
-  
-  // Look for wp-json paths
-  const wpJsonMatches = html.matchAll(/["'](\/[^"']*?)\/wp-json/g);
-  for (const match of wpJsonMatches) {
-    if (match[1]) {
-      paths.add(match[1]);
-    }
-  }
-  
-  // Look for links to blog or WordPress paths
-  const linkMatches = html.matchAll(/href=["'](\/[^"']+?)\/(?:wp-admin|wp-login|feed)/gi);
-  for (const match of linkMatches) {
-    if (match[1]) {
-      paths.add(match[1]);
-    }
-  }
-  
-  // Common WordPress subdirectory names - check these FIRST before root
-  const commonPaths = ['/blog', '/wordpress', '/wp', '/site', '/web', '/news', '/articles'];
-  commonPaths.forEach(p => paths.add(p));
-  
-  // Return with common paths first (more likely to be WordPress subdirectories)
-  const result = Array.from(paths);
-  return result.sort((a, b) => {
-    if (a === '') return 1; // Root last
-    if (b === '') return -1;
-    if (commonPaths.includes(a)) return -1; // Common paths first
-    if (commonPaths.includes(b)) return 1;
-    return 0;
-  });
-}
-
-async function checkUserEnumeration(baseUrl: string, wpPaths: string[] = ['']): Promise<UserEnumeration> {
-  const result: UserEnumeration = { 
-    found: false, 
-    status: 'not_found',
-    users: [], 
-    method: '',
-    reference: USER_ENUMERATION_REFERENCE,
-  };
-  
-  const blockedCodes = [401, 403, 406, 429];
-  
-  // Ensure common WordPress paths are checked first
-  const pathsToCheck = new Set(wpPaths);
-  ['/blog', '/wordpress', '/wp', ''].forEach(p => pathsToCheck.add(p));
-  const orderedPaths = Array.from(pathsToCheck).sort((a, b) => {
-    if (a === '') return 1; // Root last
-    if (b === '') return -1;
-    return 0;
-  });
-  
-  // Try each path
-  for (const wpPath of orderedPaths) {
-    const pathBase = baseUrl + wpPath;
-    
-    // Method 1: rest_route parameter FIRST (works more reliably, especially for subdirectories)
-    try {
-      const routeUrl = pathBase + '/?rest_route=/wp/v2/users';
-      const response = await fetchWithProxy(routeUrl);
-      
-      // Check if blocked/protected
-      if (blockedCodes.includes(response.status)) {
-        result.status = 'protected';
-        result.protectionDetails = `Endpoint protegido (HTTP ${response.status}) en ${wpPath || '/'}`;
-        continue;
-      }
-      
-      const text = await response.text();
-      
-      // Check if response looks like JSON
-      if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
-        try {
-          const users = JSON.parse(text);
-          if (Array.isArray(users) && users.length > 0) {
-            result.found = true;
-            result.status = 'found';
-            result.method = `REST Route (${wpPath || '/'}?rest_route=/wp/v2/users)`;
-            result.users = users.slice(0, 10).map((u: any) => ({
-              id: u.id,
-              name: u.name || u.slug,
-              slug: u.slug,
-            }));
-            return result;
-          }
-        } catch { /* not valid JSON */ }
-      }
-    } catch { /* continue */ }
-    
-    // Method 2: REST API endpoint
-    try {
-      const apiUrl = pathBase + '/wp-json/wp/v2/users';
-      const response = await fetchWithProxy(apiUrl);
-      
-      if (blockedCodes.includes(response.status)) {
-        result.status = 'protected';
-        result.protectionDetails = `REST API protegida (HTTP ${response.status}) en ${wpPath || '/'}`;
-        continue;
-      }
-      
-      if (response.ok) {
-        const text = await response.text();
-        try {
-          const users = JSON.parse(text);
-          if (Array.isArray(users) && users.length > 0) {
-            result.found = true;
-            result.status = 'found';
-            result.method = `REST API (${wpPath || '/'}/wp-json/wp/v2/users)`;
-            result.users = users.slice(0, 10).map((u: any) => ({
-              id: u.id,
-              name: u.name || u.slug,
-              slug: u.slug,
-            }));
-            return result;
-          }
-        } catch { /* not JSON */ }
-      }
-    } catch { /* continue */ }
-  }
-  
-  // Method 3: Author enumeration (fallback) - try on all paths
-  for (const wpPath of orderedPaths) {
-    const pathBase = baseUrl + wpPath;
-    try {
-      const authorChecks = await Promise.all(
-        [1, 2, 3].map(async (i) => {
-          try {
-            const response = await fetchWithProxy(pathBase + `/?author=${i}`);
-            const html = await response.text();
-            const authorMatch = html.match(/author\/([^\/\"]+)/);
-            if (authorMatch) {
-              return { id: i, name: authorMatch[1], slug: authorMatch[1] };
-            }
-          } catch { /* ignore */ }
-          return null;
-        })
-      );
-      
-      const foundUsers = authorChecks.filter(Boolean);
-      if (foundUsers.length > 0) {
-        result.found = true;
-        result.method = `Author Parameter (${wpPath || '/'}?author=N)`;
-        result.users = foundUsers as any[];
-        return result;
-      }
-    } catch { /* ignore */ }
-  }
-  
-  return result;
-}
-
-async function getWordPressInfo(baseUrl: string, html: string): Promise<WordPressInfo> {
-  const info: WordPressInfo = {
-    version: null,
-    theme: null,
-    generator: false,
-    readme: false,
-    wafDetected: null,
-    sslInfo: null,
-  };
-  
-  // Check for generator meta tag
-  const generatorMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']WordPress\s*([\d.]+)?["']/i);
-  if (generatorMatch) {
-    info.generator = true;
-    info.version = generatorMatch[1] || 'Unknown';
-  }
-  
-  // Check for version in scripts/styles
-  if (!info.version) {
-    const versionMatch = html.match(/ver=([\d.]+)/);
-    if (versionMatch) info.version = versionMatch[1];
-  }
-  
-  // Check for theme
-  const themeMatch = html.match(/wp-content\/themes\/([^\/\"]+)/);
-  if (themeMatch) info.theme = themeMatch[1];
-  
-  // Check SSL (basic - just verify HTTPS works)
-  if (baseUrl.startsWith('https://')) {
-    info.sslInfo = { valid: true };
-  }
-  
-  return info;
-}
-
-function calculateOverallScore(result: Partial<AuditResult>): number {
-  let score = 100;
-  
-  const criticalHeaders = ['Content-Security-Policy', 'X-Frame-Options', 'Strict-Transport-Security', 'X-Content-Type-Options'];
-  
-  // Security headers analysis
-  for (const header of result.securityHeaders || []) {
-    if (header.status === 'vulnerable') {
-      const deduction = criticalHeaders.includes(header.name) ? 8 : 4;
-      score -= deduction;
-    } else if (header.status === 'warning') {
-      score -= 2;
-    }
-  }
-  
-  // Endpoint accessibility analysis
-  for (const endpoint of result.endpoints || []) {
-    if (endpoint.status === 'accessible') {
-      const deductions = { critical: 12, high: 8, medium: 4, low: 2, info: 0 };
-      score -= deductions[endpoint.risk] || 0;
-    }
-  }
-  
-  // User enumeration (major issue)
-  if (result.userEnumeration?.found) {
-    score -= 12;
-  }
-  
-  // Version disclosure
-  if (result.wordpressInfo?.generator) {
-    score -= 4;
-  }
-  
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-export interface AuditProgress {
-  step: string;
-  current: number;
-  total: number;
-  percentage: number;
-}
-
-export async function auditWordPress(
-  url: string, 
-  onProgress?: (progress: AuditProgress) => void
-): Promise<AuditResult> {
-  const baseUrl = normalizeUrl(url);
-  const totalSteps = 4;
-  
-  const updateProgress = (step: string, current: number) => {
-    onProgress?.({
-      step,
-      current,
-      total: totalSteps,
-      percentage: Math.round((current / totalSteps) * 100),
-    });
-  };
-  
-  updateProgress('Verificando conexión...', 0);
-  
-  let isWordPress = false;
-  let wpDetection: WordPressDetection = 'not_detected';
-  let wpDetectionDetails = '';
-  let homeHtml = '';
-  let detectedWpPath = '';
-  let wasBlocked = false;
-  
-  const BLOCKING_CODES = [403, 406, 429];
-  
-  try {
-    const response = await fetchWithProxy(baseUrl);
-    homeHtml = await response.text();
-    
-    // Check if response looks like a block/captcha page
-    if (BLOCKING_CODES.includes(response.status)) {
-      wasBlocked = true;
-      wpDetectionDetails = `El sitio devolvió HTTP ${response.status} — posible WAF, captcha o protección anti-bot`;
-    }
-    
-    // Check for common block page indicators in the HTML
-    const blockIndicators = ['captcha', 'challenge-platform', 'cf-browser-verification', 'access denied', 'forbidden', 'blocked'];
-    const lowerHtml = homeHtml.toLowerCase();
-    if (blockIndicators.some(indicator => lowerHtml.includes(indicator)) && homeHtml.length < 5000) {
-      wasBlocked = true;
-      wpDetectionDetails = 'Se detectó una página de bloqueo/captcha — el WAF puede estar impidiendo el análisis';
-    }
-    
-    // WordPress detection - check multiple indicators with different weights
-    const wpIndicators = [
-      // Strong indicators (definitely WordPress)
-      { pattern: 'wp-content', strong: true },
-      { pattern: 'wp-includes', strong: true },
-      { pattern: 'wp-json', strong: true },
-      { pattern: 'generator" content="WordPress', strong: true },
-      { pattern: 'name="generator" content="WordPress', strong: true },
-      { pattern: '/wp-admin/', strong: true },
-      { pattern: 'woocommerce', strong: true },
-      { pattern: 'xmlrpc.php', strong: true },
-      { pattern: 'wp-login.php', strong: true },
-      { pattern: 'wp-block', strong: true },
-      // Weak indicators 
-      { pattern: 'wordpress', strong: false },
-      { pattern: 'WordPress', strong: false },
-      { pattern: 'wp-emoji', strong: false },
-      { pattern: '/themes/', strong: false },
-      { pattern: '/plugins/', strong: false },
-      { pattern: 'has-sidebar', strong: false },
-    ];
-    
-    const strongMatches = wpIndicators.filter(i => i.strong && homeHtml.includes(i.pattern));
-    const weakMatches = wpIndicators.filter(i => !i.strong && homeHtml.includes(i.pattern));
-    
-    // WordPress if: 1 strong match OR 2+ weak matches
-    isWordPress = strongMatches.length >= 1 || weakMatches.length >= 2;
-    
-    // If not detected on homepage, check common subdirectories
-    if (!isWordPress) {
-      const commonWpPaths = ['/blog', '/wordpress', '/wp', '/news'];
-      for (const path of commonWpPaths) {
-        try {
-          const subResponse = await fetchWithProxy(baseUrl + path);
-          const subHtml = await subResponse.text();
-          
-          if (BLOCKING_CODES.includes(subResponse.status)) {
-            wasBlocked = true;
-            continue;
-          }
-          
-          const subStrongMatches = wpIndicators.filter(i => i.strong && subHtml.includes(i.pattern));
-          const subWeakMatches = wpIndicators.filter(i => !i.strong && subHtml.includes(i.pattern));
-          
-          if (subStrongMatches.length >= 1 || subWeakMatches.length >= 2) {
-            isWordPress = true;
-            detectedWpPath = path;
-            homeHtml = subHtml;
-            break;
-          }
-        } catch { /* continue checking */ }
-      }
-    }
-    
-    // Set detection state
-    if (isWordPress) {
-      wpDetection = 'detected';
-      wpDetectionDetails = detectedWpPath 
-        ? `WordPress detectado en subdirectorio: ${detectedWpPath}`
-        : 'WordPress detectado en la raíz del sitio';
-    } else if (wasBlocked) {
-      wpDetection = 'blocked';
-      if (!wpDetectionDetails) {
-        wpDetectionDetails = 'No se pudo determinar si es WordPress — el sitio está protegido por WAF/captcha';
-      }
+function analyzeHeaders(headers: Record<string,string>): SecurityHeader[] {
+  return HEADERS_LIST.map(name => {
+    const value = headers[name] || null;
+    const ref = SECURITY_HEADER_REFERENCES[name];
+    let status: 'secure'|'warning'|'vulnerable'|'info' = 'vulnerable';
+    let description = '';
+    if (name === 'content-security-policy') {
+      if (!value) { status='vulnerable'; description='CSP ausente: riesgo de XSS'; }
+      else if (value.includes("'unsafe-inline'") || value.includes("'unsafe-eval'")) { status='warning'; description='CSP debilitada por unsafe-inline/eval'; }
+      else { status='secure'; description=value; }
+    } else if (name === 'strict-transport-security') {
+      if (!value) { status='vulnerable'; description='HSTS ausente: vulnerable a downgrade'; }
+      else if (parseInt(value.match(/max-age=(\d+)/)?.[1]||'0') < 15768000) { status='warning'; description='HSTS con max-age demasiado corto'; }
+      else { status='secure'; description=value; }
+    } else if (name === 'x-frame-options') {
+      if (!value) { status='vulnerable'; description='Ausente: vulnerable a clickjacking'; }
+      else { status='secure'; description=value; }
+    } else if (name === 'x-content-type-options') {
+      if (!value) { status='vulnerable'; description='Ausente: MIME sniffing habilitado'; }
+      else { status='secure'; description=value; }
+    } else if (name === 'x-xss-protection') {
+      status='info'; description=value||'No configurada (deprecada en navegadores modernos)';
     } else {
-      wpDetection = 'not_detected';
-      wpDetectionDetails = 'No se encontraron indicadores de WordPress en el sitio';
+      if (!value) { status='warning'; description=name+' no configurada'; }
+      else { status='secure'; description=value; }
     }
-    
-  } catch {
-    throw new Error('No se pudo conectar con el sitio web. Los proxies CORS pueden estar bloqueados.');
-  }
-  
-  // Detect WordPress paths from HTML
-  const wpPaths = detectWpPaths(homeHtml);
-  
-  // Run checks in parallel where possible
-  updateProgress('Analizando seguridad...', 1);
-  
-  const [headersResult, endpoints, userEnumeration, wordpressInfo] = await Promise.all([
-    checkSecurityHeaders(baseUrl).then(r => { updateProgress('Verificando endpoints...', 2); return r; }),
-    checkEndpoints(baseUrl),
-    checkUserEnumeration(baseUrl, wpPaths).then(r => { updateProgress('Finalizando análisis...', 3); return r; }),
-    getWordPressInfo(baseUrl, homeHtml),
+    return { name, value, status, description, reference: ref };
+  });
+}
+
+function calcCVSS(sh: SecurityHeader[], ep: EndpointCheck[], ue: UserEnumeration): CvssScore {
+  let score = 0;
+  score += sh.filter(h=>h.status==='vulnerable').length * 0.4;
+  score += sh.filter(h=>h.status==='warning').length * 0.2;
+  score += ep.filter(e=>e.status==='accessible'&&e.risk==='critical').length * 1.8;
+  score += ep.filter(e=>e.status==='accessible'&&e.risk==='high').length * 1.2;
+  if (ue.found) score += 1.5;
+  score = Math.min(10, score);
+  const severity = score>=9?'Critical':score>=7?'High':score>=4?'Medium':score>0?'Low':'None';
+  const crit = ep.filter(e=>e.status==='accessible'&&e.risk==='critical').length;
+  const vector = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:'+(score>7?'H':score>4?'L':'N')+'/I:'+(crit>0?'H':'L')+'/A:N';
+  return { score: Math.round(score*10)/10, severity: severity as any, vector };
+}
+
+function calcScore(sh: SecurityHeader[], ep: EndpointCheck[], ue: UserEnumeration): number {
+  let s=100;
+  sh.forEach(h=>{ if(h.status==='vulnerable') s-=8; else if(h.status==='warning') s-=3; });
+  ep.forEach(e=>{ if(e.status!=='accessible') return; if(e.risk==='critical') s-=15; else if(e.risk==='high') s-=10; else if(e.risk==='medium') s-=5; else s-=2; });
+  if(ue.found) s-=10;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+export async function auditWordPress(rawUrl: string, onProgress: ProgressCallback): Promise<AuditResult> {
+  const baseUrl = normalizeUrl(rawUrl);
+  const report = (step:string,current:number,total=4) =>
+    onProgress({ step, current, total, percentage: Math.round((current/total)*100) });
+
+  // STEP 1: main page — headers + body
+  report('Analizando cabeceras HTTP...', 0);
+  const mainPage = await fetchWithProxy(baseUrl);
+  const headers = mainPage.headers;
+  const body = mainPage.text;
+
+  const isWordPress = body.includes('wp-content') || body.includes('wp-includes') ||
+    body.includes('WordPress') || !!headers['x-powered-by']?.includes('WordPress');
+
+  const securityHeaders = analyzeHeaders(headers);
+  report('Escaneando endpoints y usuarios en paralelo...', 1);
+
+  // STEP 2+3: ALL endpoint checks + user enum in parallel
+  const [endpointResults, userEnumResult] = await Promise.all([
+    Promise.all(
+      SENSITIVE_ENDPOINTS.map(async (ep) => {
+        const url = baseUrl + ep.path;
+        try {
+          const { accessible, status } = await checkEndpoint(url);
+          return { url, name: ep.name, risk: ep.risk, description: ep.description,
+            status: accessible ? 'accessible' : 'not_accessible', statusCode: status } as EndpointCheck;
+        } catch {
+          return { url, name: ep.name, risk: ep.risk, description: ep.description,
+            status: 'not_accessible', statusCode: 0 } as EndpointCheck;
+        }
+      })
+    ),
+    (async (): Promise<UserEnumeration> => {
+      try {
+        const r = await fetchWithProxy(baseUrl + '/wp-json/wp/v2/users?per_page=5');
+        if (r.ok && r.text.includes('"id"')) {
+          const users = JSON.parse(r.text);
+          if (Array.isArray(users) && users.length > 0) {
+            return { found:true, status:'vulnerable', method:'REST API /wp/v2/users',
+              users: users.map((u:any)=>({ id:u.id, name:u.name, slug:u.slug })),
+              reference: { owasp:'OWASP A07:2021', cvss:{ score:5.3,severity:'Medium',vector:'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N'} } };
+          }
+        }
+      } catch { /* ignore */ }
+      return { found:false, status:'protected', method:'REST API /wp/v2/users', users:[],
+        protectionDetails:'Enumeracion de usuarios no detectada',
+        reference:{ owasp:'OWASP A07:2021', cvss:{ score:0, severity:'None', vector:'' } } };
+    })()
   ]);
-  
-  // Add WAF detection to wordpressInfo
-  wordpressInfo.wafDetected = headersResult.wafDetected;
-  
-  updateProgress('Completado', 4);
-  
-  // Calculate CVSS overall
-  const cvssOverall = calculateOverallCvss(
-    headersResult.headers,
-    endpoints,
-    userEnumeration.found,
-    wordpressInfo.generator
-  );
-  
-  const result: AuditResult = {
+
+  report('Calculando puntuacion de seguridad...', 3);
+
+  const cvssOverall = calcCVSS(securityHeaders, endpointResults, userEnumResult);
+  const overallScore = calcScore(securityHeaders, endpointResults, userEnumResult);
+  const readmeEp = endpointResults.find(e => e.path === '/readme.html');
+
+  const wordpressInfo: WordPressInfo = {
+    version: extractWPVersion(body) || undefined,
+    theme: extractTheme(body) || undefined,
+    generator: body.includes('<meta name="generator"') && body.includes('WordPress'),
+    readme: readmeEp?.status === 'accessible',
+    wafDetected: detectWAF(headers, body) || undefined,
+    sslInfo: { valid: baseUrl.startsWith('https://'), issuer: baseUrl.startsWith('https://') ? 'Valid SSL' : undefined },
+  };
+
+  report('Auditoria completada', 4);
+
+  return {
     url: baseUrl,
-    timestamp: new Date(),
+    timestamp: new Date().toISOString(),
     isWordPress,
-    wpDetection,
-    wpDetectionDetails,
-    detectedWpPath: detectedWpPath || undefined,
-    securityHeaders: headersResult.headers,
-    endpoints,
-    userEnumeration,
+    wpDetection: isWordPress ? 'detected' : 'not_detected',
     wordpressInfo,
-    overallScore: 0,
+    securityHeaders,
+    endpoints: endpointResults,
+    userEnumeration: userEnumResult,
+    overallScore,
     cvssOverall,
   };
-  
-  result.overallScore = calculateOverallScore(result);
-  
-  return result;
 }
