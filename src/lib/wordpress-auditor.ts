@@ -7,21 +7,34 @@ export interface AuditProgress {
 }
 type ProgressCallback = (p: AuditProgress) => void;
 
-const SENSITIVE_ENDPOINTS = [
-  { path: '/xmlrpc.php',           name: 'XML-RPC',       risk: 'critical' as const, description: 'Permite ataques de fuerza bruta y DDoS amplificado' },
-  { path: '/wp-login.php',         name: 'WP Login',      risk: 'high' as const,     description: 'Login expuesto a ataques de fuerza bruta' },
-  { path: '/wp-admin/',            name: 'WP Admin',      risk: 'high' as const,     description: 'Panel de administracion accesible publicamente' },
-  { path: '/wp-json/wp/v2/users',  name: 'REST Users',    risk: 'high' as const,     description: 'API REST expone usuarios registrados' },
-  { path: '/wp-json/',             name: 'REST API',      risk: 'medium' as const,   description: 'API REST habilitada y accesible' },
-  { path: '/readme.html',          name: 'Readme',        risk: 'medium' as const,   description: 'Revela version exacta de WordPress' },
-  { path: '/license.txt',          name: 'License',       risk: 'low' as const,      description: 'Revela informacion de la instalacion' },
-  { path: '/wp-content/debug.log', name: 'Debug Log',     risk: 'critical' as const, description: 'Log de errores con rutas internas expuesto' },
-  { path: '/wp-config.php.bak',    name: 'Config Backup', risk: 'critical' as const, description: 'Backup de configuracion con credenciales de BD' },
-  { path: '/.env',                 name: 'ENV File',      risk: 'critical' as const, description: 'Variables de entorno con credenciales' },
-  { path: '/.git/HEAD',            name: 'Git Repo',      risk: 'critical' as const, description: 'Repositorio Git expuesto' },
-  { path: '/wp-content/uploads/',  name: 'Uploads Dir',   risk: 'medium' as const,   description: 'Directorio de uploads con listado habilitado' },
-  { path: '/sitemap.xml',          name: 'Sitemap',       risk: 'info' as const,     description: 'Sitemap publico (informativo)' },
-  { path: '/robots.txt',           name: 'Robots',        risk: 'info' as const,     description: 'Puede revelar rutas ocultas' },
+// Each endpoint has a validator to avoid false positives
+// Some servers return 200 for everything (soft 404)
+interface EndpointDef {
+  path: string;
+  name: string;
+  risk: 'critical'|'high'|'medium'|'low'|'info';
+  description: string;
+  // Optional: string that MUST appear in the response body to confirm it's real
+  bodyMustContain?: string;
+  // Optional: string that if present means it's NOT the real file
+  bodyMustNotContain?: string;
+}
+
+const SENSITIVE_ENDPOINTS: EndpointDef[] = [
+  { path: '/xmlrpc.php',                       name: 'XML-RPC',        risk: 'critical', description: 'Permite ataques de fuerza bruta y DDoS amplificado',          bodyMustContain: 'XML-RPC' },
+  { path: '/wp-login.php',                     name: 'WP Login',       risk: 'high',     description: 'Login expuesto a ataques de fuerza bruta',                    bodyMustContain: 'wp-login' },
+  { path: '/wp-admin/',                        name: 'WP Admin',       risk: 'high',     description: 'Panel de administracion accesible publicamente',              bodyMustContain: 'wp-admin' },
+  { path: '/?rest_route=/wp/v2/users',         name: 'REST Users',     risk: 'high',     description: 'API REST expone lista de usuarios registrados',               bodyMustContain: '"id"' },
+  { path: '/wp-json/',                         name: 'REST API',       risk: 'medium',   description: 'API REST habilitada y accesible',                             bodyMustContain: 'namespaces' },
+  { path: '/readme.html',                      name: 'Readme',         risk: 'medium',   description: 'Revela la version exacta de WordPress',                       bodyMustContain: 'WordPress' },
+  { path: '/license.txt',                      name: 'License',        risk: 'low',      description: 'Revela informacion de la instalacion de WordPress',           bodyMustContain: 'WordPress' },
+  { path: '/wp-content/debug.log',             name: 'Debug Log',      risk: 'critical', description: 'Log de errores con rutas internas expuesto',                  bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/wp-config.php.bak',                name: 'Config Backup',  risk: 'critical', description: 'Backup de configuracion con credenciales de BD',              bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/.env',                             name: 'ENV File',       risk: 'critical', description: 'Variables de entorno con credenciales',                       bodyMustNotContain: '<!DOCTYPE' },
+  { path: '/.git/HEAD',                        name: 'Git Repo',       risk: 'critical', description: 'Repositorio Git expuesto — codigo fuente filtrable',          bodyMustContain: 'ref:' },
+  { path: '/wp-content/uploads/',              name: 'Uploads Dir',    risk: 'medium',   description: 'Directorio de uploads con listado habilitado',                bodyMustContain: 'Index of' },
+  { path: '/sitemap.xml',                      name: 'Sitemap',        risk: 'info',     description: 'Sitemap publico — puede revelar estructura interna',           bodyMustContain: '<urlset' },
+  { path: '/robots.txt',                       name: 'Robots.txt',     risk: 'info',     description: 'Puede revelar rutas ocultas o sensibles',                     bodyMustContain: 'User-agent' },
 ];
 
 const HEADERS_LIST = [
@@ -105,6 +118,28 @@ function calcScore(sh: SecurityHeader[], ep: EndpointCheck[], ue: UserEnumeratio
   return Math.max(0, Math.min(100, Math.round(s)));
 }
 
+// Smart endpoint check: verifies response body to avoid false positives
+async function checkEndpointSmart(baseUrl: string, ep: EndpointDef): Promise<EndpointCheck> {
+  const url = baseUrl + ep.path;
+  try {
+    const result = await fetchWithProxy(url);
+    if (!result.ok || result.status === 0) {
+      return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
+    }
+    const body = result.text || '';
+    // Validate body to avoid soft-404 false positives
+    if (ep.bodyMustContain && !body.includes(ep.bodyMustContain)) {
+      return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
+    }
+    if (ep.bodyMustNotContain && body.includes(ep.bodyMustNotContain)) {
+      return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: result.status };
+    }
+    return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'accessible', statusCode: result.status };
+  } catch {
+    return { url, name: ep.name, risk: ep.risk, description: ep.description, status: 'not_accessible', statusCode: 0 };
+  }
+}
+
 export async function auditWordPress(rawUrl: string, onProgress: ProgressCallback): Promise<AuditResult> {
   const baseUrl = normalizeUrl(rawUrl);
   const report = (step:string,current:number,total=4) =>
@@ -122,32 +157,23 @@ export async function auditWordPress(rawUrl: string, onProgress: ProgressCallbac
   report('Escaneando endpoints y usuarios en paralelo...', 1);
 
   const [endpointResults, userEnumResult] = await Promise.all([
-    Promise.all(
-      SENSITIVE_ENDPOINTS.map(async (ep) => {
-        const url = baseUrl + ep.path;
-        try {
-          const { accessible, status } = await checkEndpoint(url);
-          return { url, name: ep.name, risk: ep.risk, description: ep.description,
-            status: accessible ? 'accessible' : 'not_accessible', statusCode: status } as EndpointCheck;
-        } catch {
-          return { url, name: ep.name, risk: ep.risk, description: ep.description,
-            status: 'not_accessible', statusCode: 0 } as EndpointCheck;
-        }
-      })
-    ),
+    // All endpoints in parallel with smart body validation
+    Promise.all(SENSITIVE_ENDPOINTS.map(ep => checkEndpointSmart(baseUrl, ep))),
+
+    // User enumeration
     (async (): Promise<UserEnumeration> => {
       try {
-        const r = await fetchWithProxy(baseUrl + '/wp-json/wp/v2/users?per_page=5');
-        if (r.ok && r.text.includes('"id"')) {
+        const r = await fetchWithProxy(baseUrl + '/?rest_route=/wp/v2/users&per_page=5');
+        if (r.ok && r.text.includes('"id"') && r.text.includes('"slug"')) {
           const users = JSON.parse(r.text);
           if (Array.isArray(users) && users.length > 0) {
-            return { found:true, status:'vulnerable', method:'REST API /wp/v2/users',
-              users: users.map((u:any)=>({ id:u.id, name:u.name, slug:u.slug })),
+            return { found:true, status:'vulnerable', method:'REST API /?rest_route=/wp/v2/users',
+              users: users.map((u:any)=>({ id:u.id, name:u.name||u.slug, slug:u.slug })),
               reference: { owasp:'OWASP A07:2021', cvss:{ score:5.3,severity:'Medium',vector:'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N'} } };
           }
         }
       } catch { /* ignore */ }
-      return { found:false, status:'protected', method:'REST API /wp/v2/users', users:[],
+      return { found:false, status:'protected', method:'REST API /?rest_route=/wp/v2/users', users:[],
         protectionDetails:'Enumeracion de usuarios no detectada',
         reference:{ owasp:'OWASP A07:2021', cvss:{ score:0, severity:'None', vector:'' } } };
     })()
