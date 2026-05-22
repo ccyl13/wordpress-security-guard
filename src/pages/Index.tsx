@@ -9,6 +9,7 @@ import { Recommendations } from '@/components/Recommendations';
 import { AuditLoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { ExportButton } from '@/components/ExportButton';
+import { ExportMarkdownButton } from '@/components/ExportMarkdownButton';
 import { AuditHistory } from '@/components/AuditHistory';
 import { useAuditHistory } from '@/hooks/useAuditHistory';
 import { auditWordPress, type AuditProgress } from '@/lib/wordpress-auditor';
@@ -206,7 +207,10 @@ export default function Index() {
               <p className="font-mono text-violet-400 font-bold text-base truncate max-w-xs sm:max-w-lg">{result.url}</p>
               <p className="font-mono text-[10px] text-white/20 mt-1">{new Date(result.timestamp).toLocaleString('es-ES')}</p>
             </div>
-            <ExportButton result={result} />
+            <div className="flex items-center gap-2">
+              <ExportButton result={result} />
+              <ExportMarkdownButton result={result} />
+            </div>
           </div>
 
           {/* Info del sitio a todo ancho */}
